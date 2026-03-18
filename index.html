@@ -81,6 +81,7 @@ service cloud.firestore {
 html,body{height:100%;overscroll-behavior:none}
 body{
   font-family:'Libre Baskerville',Georgia,serif;
+  touch-action:manipulation;
   background-color:var(--green-deep);
   background-image:
     radial-gradient(ellipse at 20% 50%,rgba(46,106,79,.3) 0%,transparent 60%),
@@ -621,12 +622,24 @@ body{
 // ═══════════════════════════
 (function preventDoubleTapZoom() {
   let lastTap = 0;
-  document.addEventListener('touchend', function(e) {
+  let lastX = 0;
+  let lastY = 0;
+  document.addEventListener('touchstart', function(e) {
     const now = Date.now();
-    if (now - lastTap < 300) {
+    const t = e.touches[0];
+    const x = t.clientX;
+    const y = t.clientY;
+    const dt = now - lastTap;
+    const dx = Math.abs(x - lastX);
+    const dy = Math.abs(y - lastY);
+    // Only block if the two taps are close together in both time AND space
+    // (true zoom gesture). Allow fast taps on different keys (dx/dy > 20px).
+    if (dt < 300 && dx < 20 && dy < 20) {
       e.preventDefault();
     }
     lastTap = now;
+    lastX = x;
+    lastY = y;
   }, { passive: false });
 })();
 
