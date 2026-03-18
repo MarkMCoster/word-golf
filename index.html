@@ -32,10 +32,10 @@ service cloud.firestore {
 
     // Users collection
     match /users/{uid} {
-      // Anyone signed in can read ONLY the displayName field (for search/friend names)
-      allow get: if request.auth != null;
-      // Only the owner can read their full profile or write to it
-      allow read, write: if request.auth.uid == uid;
+      // Anyone signed in can read/list users (needed for friend search)
+      allow read: if request.auth != null;
+      // Only the owner can write to their profile
+      allow write: if request.auth.uid == uid;
     }
 
     // Friend requests — separate collection, no cross-user doc writes needed
@@ -1362,7 +1362,11 @@ async function searchFriends() {
     });
   } catch(e) {
     console.error('Friend search error:', e);
-    res.innerHTML = '<div style="color:#e06060;font-size:12px;padding:8px 0">Search error: ' + e.message + '</div>';
+    const isPerms = e.code === 'permission-denied' || (e.message||'').toLowerCase().includes('permission');
+    const msg = isPerms
+      ? 'Permission denied — update your Firestore rules to allow <strong>read</strong> (not just get) on /users. See setup instructions.'
+      : 'Search error: ' + e.message;
+    res.innerHTML = '<div style="color:#e06060;font-size:12px;padding:8px 0;line-height:1.5">' + msg + '</div>';
   }
 }
 async function sendFriendRequest(toUid, toName) {
