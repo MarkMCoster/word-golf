@@ -150,17 +150,18 @@ body{
 .fill-random-btn:hover{background:rgba(82,183,136,.2);box-shadow:none}
 
 /* GAME */
-#game-screen{padding:0;justify-content:flex-start;position:relative}
+#game-screen{padding:0;justify-content:flex-start;position:relative;touch-action:manipulation}
+#match-game-screen{touch-action:manipulation}
 .game-header{width:100%;background:linear-gradient(180deg,rgba(10,25,18,.97) 0%,rgba(26,58,42,.75) 100%);border-bottom:1px solid rgba(201,168,76,.2);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(10px);position:sticky;top:0;z-index:100}
 .hole-info{text-align:center;flex:1}
 .hole-number{font-family:'Playfair Display',serif;font-size:13px;color:var(--gold-light);letter-spacing:2px;text-transform:uppercase}
 .hole-flavor{font-size:10px;color:var(--gray-mid);font-style:italic;margin-top:1px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .score-badge{font-family:'Courier Prime',monospace;font-size:13px;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);border-radius:20px;padding:4px 12px;color:var(--gold-light);cursor:pointer;white-space:nowrap}
 .scorecard-toggle-btn{background:none;border:none;color:var(--gold);font-size:20px;cursor:pointer;padding:4px}
-.grid-container{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px 16px;width:100%;max-width:380px;margin:0 auto}
-.grid{display:grid;grid-template-rows:repeat(6,1fr);gap:5px;width:100%;max-width:300px;margin:0 auto}
-.grid-row{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
-.tile{aspect-ratio:1;border:2px solid rgba(201,168,76,.2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:clamp(18px,5.5vw,26px);font-weight:700;color:var(--cream);background:rgba(255,255,255,.03);transition:border-color .1s;user-select:none}
+.grid-container{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px 16px;width:100%;max-width:380px;margin:0 auto;touch-action:manipulation}
+.grid{display:grid;grid-template-rows:repeat(6,1fr);gap:5px;width:100%;max-width:300px;margin:0 auto;touch-action:manipulation}
+.grid-row{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;touch-action:manipulation}
+.tile{aspect-ratio:1;border:2px solid rgba(201,168,76,.2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:clamp(18px,5.5vw,26px);font-weight:700;color:var(--cream);background:rgba(255,255,255,.03);transition:border-color .1s;user-select:none;touch-action:manipulation}
 .tile.filled{border-color:rgba(201,168,76,.5);animation:pop .1s ease}
 @keyframes pop{0%{transform:scale(1)}50%{transform:scale(1.12)}100%{transform:scale(1.04)}}
 .tile.flipping{animation:flip .5s ease forwards}
@@ -172,9 +173,9 @@ body{
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
 .tile.bounce{animation:bounceUp .6s ease}
 @keyframes bounceUp{0%{transform:translateY(0)}30%{transform:translateY(-18px)}60%{transform:translateY(-6px)}80%{transform:translateY(-3px)}100%{transform:translateY(0)}}
-.keyboard{width:100%;max-width:500px;padding:6px 6px calc(var(--nav-h) + 14px);margin:0 auto}
+.keyboard{width:100%;max-width:500px;padding:6px 6px calc(var(--nav-h) + 14px);margin:0 auto;touch-action:manipulation}
 .kb-row{display:flex;justify-content:center;gap:4px;margin-bottom:4px}
-.key{height:50px;min-width:28px;flex:1;max-width:40px;border-radius:5px;border:1px solid rgba(201,168,76,.15);background:rgba(255,255,255,.08);color:var(--cream);font-family:'Courier Prime',monospace;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;user-select:none;-webkit-user-select:none;-webkit-appearance:none}
+.key{height:50px;min-width:28px;flex:1;max-width:40px;border-radius:5px;border:1px solid rgba(201,168,76,.15);background:rgba(255,255,255,.08);color:var(--cream);font-family:'Courier Prime',monospace;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;user-select:none;-webkit-user-select:none;-webkit-appearance:none;touch-action:manipulation}
 .key:active{transform:scale(.92);filter:brightness(1.3)}
 .key.wide{min-width:48px;max-width:56px;font-size:10px;letter-spacing:.5px}
 .key[data-state="correct"]{background:var(--correct);border-color:var(--correct);color:white}
@@ -652,7 +653,7 @@ const COURSES=[
    words:['MAPLE','RISEN','PINES','CREEK','GRAND','EAGLE','BLUSH','QUIET','STEEP','BIRCH','CROWD','IVORY','VINES','DUNES','GLASS','SHARP','PATCH','SWAMP'],
    flavors:['Hole 1 — Tea Olive. The gallery holds its breath.','Hole 2 — Pink Dogwood. A long and winding hole.','Hole 3 — Flowering Peach. The shortest par four.','Hole 4 — Crabapple. Ike\'s Pond glistens below.','Hole 5 — Magnolia. Towering trees line both sides.','Hole 6 — Juniper. The eagle lands with authority.','Hole 7 — Pampas. Blossoms carpet the bank.','Hole 8 — Yellow Jasmine. The quietest par five.','Hole 9 — Carolina Cherry. The back nine awaits.','Hole 10 — Camellia. The slope deceives every year.','Hole 11 — White Dogwood. Amen Corner begins.','Hole 12 — Golden Bell. The most treacherous short hole.','Hole 13 — Azalea. The creek hungers below.','Hole 14 — Chinese Fir. The dunes shift with the season.','Hole 15 — Firethorn. The pond demands respect.','Hole 16 — Redbud. A sharp iron to an island green.','Hole 17 — Nandina. Late afternoon patches of light.','Hole 18 — Holly. Climb to the champion\'s green.']},
   {id:'STA01',name:'St. Andrews',description:'The Old Course · Fife, Scotland',
-   words:['LINKS','WINDS','STONE','SCORE','BURNS','BIRDY','TURFS','MATCH','HONOR','PITCH','ROUGH','STAKE','SWING','FRONT','WEEDS','BOGEY','DRIVE','GRIND'],
+   words:['LINKS','WINDS','STONE','SCORE','BURNS','REEDS','TURFS','MATCH','HONOR','PITCH','ROUGH','STAKE','SWING','FRONT','WEEDS','BOGEY','DRIVE','GRIND'],
    flavors:['Hole 1 — Burn. The Swilcan Burn awaits the wayward.','Hole 2 — Dyke. A long and punishing opener.','Hole 3 — Cartgate Out. The winds pick up here.','Hole 4 — Ginger Beer. Old Tom Morris\'s favorite.','Hole 5 — Hole o\' Cross. Cross it or suffer.','Hole 6 — Heathery Out. The broom blooms yellow.','Hole 7 — High Out. The highest point on the course.','Hole 8 — Short. Deceptively tricky.','Hole 9 — End. The turn into the teeth of the wind.','Hole 10 — Bobby Jones. The great man played here.','Hole 11 — High In. The rough will punish you.','Hole 12 — Heathery In. Stakes mark the boundary.','Hole 13 — Hole o\' Cross In. The swing must be true.','Hole 14 — Long. The longest hole on the course.','Hole 15 — Cartgate In. Hazards left and right.','Hole 16 — Corner of the Dyke. Bogey streak ends here.','Hole 17 — Road Hole. The most famous par four in golf.','Hole 18 — Tom Morris. Walk the last fairway with pride.']}
 ];
 
@@ -743,6 +744,7 @@ function scoreInfo(s){
   if(s===4)return{label:'Par',icon:'✅',color:'#52b788',vspar:0};
   if(s===5)return{label:'Bogey',icon:'🔴',color:'#e06060',vspar:1};
   if(s===6)return{label:'Double Bogey',icon:'🟥',color:'#cc2020',vspar:2};
+  if(s===7)return{label:'Failed',icon:'💀',color:'#aa0000',vspar:3};
   return{label:'Triple Bogey',icon:'💀',color:'#aa0000',vspar:3};
 }
 function totalVP(scores){return scores.reduce((a,s)=>a+scoreInfo(s).vspar,0)}
@@ -777,7 +779,7 @@ function renderGrid(){
     const re=document.createElement('div');re.className='grid-row';re.id=`row-${r}`;
     for(let c=0;c<5;c++){
       const t=document.createElement('div');t.className='tile';t.id=`tile-${r}-${c}`;
-      if(r<CG.length){t.textContent=CG[r][c];t.setAttribute('data-state',evalGuess(CG[r])[c]);}
+      if(r<CG.length){t.textContent=CG[r][c];if(holeWord)t.setAttribute('data-state',evalGuess(CG[r])[c]);}
       else if(r===CG.length&&c<curGuess.length){t.textContent=curGuess[c];t.classList.add('filled');}
       re.appendChild(t);
     }
@@ -872,7 +874,7 @@ function animReveal(row,guess,res,cb){
       setTimeout(()=>{
         t.setAttribute('data-state',res[c]);t.classList.remove('flipping');
         if(c===4){
-          if(res.every(r=>r==='correct')){for(let i=0;i<5;i++)setTimeout(()=>{const tt=document.getElementById(`tile-${row}-${i}`);if(tt)tt.classList.add('bounce');},i*80);}
+          if(res.every(r=>r==='correct')){for(let i=0;i<5;i++){const bi=i;setTimeout(()=>{const tt=document.getElementById(`tile-${row}-${bi}`);if(tt)tt.classList.add('bounce');},bi*80);}}
           if(cb)setTimeout(cb,300);
         }
       },250);
@@ -951,7 +953,11 @@ function showFinal(){
 }
 function copyShareText(){
   const vp=totalVP(G.scores);
-  const lines=G.scores.map((s,i)=>`Hole ${i+1}: ${scoreInfo(s).label} ${scoreInfo(s).icon}`);
+  const lines=G.scores.map((s,i)=>{
+    const info=scoreInfo(s);
+    const label=s===7?'Failed ❌':`${info.label} ${info.icon}`;
+    return `Hole ${i+1}: ${label}`;
+  });
   const code=G.isCustom&&G.customCode?`Play this course: ${G.customCode}`:!G.isPractice?`Play this course: ${G.courseId}`:'(Practice Round)';
   const txt=`⛳ Word Golf — ${G.courseName}\n${lines.slice(0,9).join('  ')}\n${lines.slice(9).join('  ')}\nFinal Score: ${fmtVP(vp)}\n${code}`;
   navigator.clipboard.writeText(txt).then(()=>toast('Copied to clipboard!')).catch(()=>toast('Copy failed — try long-pressing'));
@@ -1715,7 +1721,7 @@ function animMatchReveal(row, guess, res, cb) {
       setTimeout(() => {
         t.setAttribute('data-state', res[c]); t.classList.remove('flipping');
         if (c===4) {
-          if (res.every(r=>r==='correct')) { for (let i=0;i<5;i++) setTimeout(()=>{const tt=document.getElementById(`mtile-${row}-${i}`);if(tt)tt.classList.add('bounce');},i*80); }
+          if (res.every(r=>r==='correct')) { for (let i=0;i<5;i++){const bi=i;setTimeout(()=>{const tt=document.getElementById(`mtile-${row}-${bi}`);if(tt)tt.classList.add('bounce');},bi*80);} }
           if (cb) setTimeout(cb, 300);
         }
       }, 250);
@@ -1739,7 +1745,9 @@ function showMatchResult(s) {
 }
 function nextMatchHole() {
   document.getElementById('hole-result-overlay').classList.remove('visible');
-  const nextIdx = MG.scores.findIndex((s,i) => i > MG.currentHole && s === undefined);
+  // First look forward from current hole, then wrap around to catch any skipped holes
+  let nextIdx = MG.scores.findIndex((s,i) => i > MG.currentHole && s === undefined);
+  if (nextIdx === -1) nextIdx = MG.scores.findIndex((s,i) => i < MG.currentHole && s === undefined);
   if (nextIdx === -1) { showMatchFinalScorecard(); return; }
   MG.currentHole = nextIdx; startMatchHole();
 }
