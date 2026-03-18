@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Word Golf">
@@ -10,6 +10,48 @@
 <meta name="theme-color" content="#1a3a2a">
 <meta name="description" content="Word Golf — 18 holes of word puzzles. Lower score wins.">
 <title>Word Golf ⛳</title>
+
+<!--
+╔══════════════════════════════════════════════════════════════════╗
+║              WORD GOLF — FIREBASE SETUP INSTRUCTIONS             ║
+╠══════════════════════════════════════════════════════════════════╣
+║  STEP 1  Go to https://console.firebase.google.com               ║
+║          Create a project, then register a Web App (</>)         ║
+║          Copy the firebaseConfig object shown after registration  ║
+║                                                                  ║
+║  STEP 2  Authentication → Get started                            ║
+║          Sign-in method → Email/Password → Enable → Save         ║
+║                                                                  ║
+║  STEP 3  Firestore Database → Create database                    ║
+║          Start in production mode, pick a region                 ║
+║          Rules tab → paste and Publish:                          ║
+║                                                                  ║
+║   rules_version = '2';                                           ║
+║   service cloud.firestore {                                      ║
+║     match /databases/{db}/documents {                            ║
+║       match /users/{uid} {                                       ║
+║         allow read: if request.auth != null;                     ║
+║         allow write: if request.auth.uid == uid;                 ║
+║       }                                                          ║
+║       match /matches/{mid} {                                     ║
+║         allow read, write: if request.auth != null               ║
+║           && (resource == null                                    ║
+║           || request.auth.uid == resource.data.player1           ║
+║           || request.auth.uid == resource.data.player2);         ║
+║       }                                                          ║
+║     }                                                            ║
+║   }                                                              ║
+║                                                                  ║
+║  STEP 4  Paste your firebaseConfig in the JS block below         ║
+║                                                                  ║
+║  STEP 5  Push index.html to GitHub → Settings → Pages → main     ║
+║          Add your Pages URL to Firebase Auth Authorized Domains   ║
+╚══════════════════════════════════════════════════════════════════╝
+-->
+<!-- Firebase SDK via CDN — no npm or build step needed -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -18,9 +60,7 @@
   --brown:#7c5c3a; --gray-light:#d4cfc6; --gray-mid:#8a8278; --gray-dark:#4a4540;
   --correct:#4a7c59; --present:#c9a84c; --absent:#4a4540;
 }
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
-/* font-size 16px on inputs prevents iOS auto-zoom on focus */
-input,button,select,textarea{touch-action:manipulation;font-size:16px;-webkit-user-select:auto;user-select:auto}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overscroll-behavior:none}
 body{
   font-family:'Libre Baskerville',Georgia,serif;
@@ -117,7 +157,7 @@ body{
 @keyframes bounceUp{0%{transform:translateY(0)}30%{transform:translateY(-18px)}60%{transform:translateY(-6px)}80%{transform:translateY(-3px)}100%{transform:translateY(0)}}
 .keyboard{width:100%;max-width:500px;padding:6px 6px 12px;margin:0 auto}
 .kb-row{display:flex;justify-content:center;gap:4px;margin-bottom:4px}
-.key{height:50px;min-width:28px;flex:1;max-width:40px;border-radius:5px;border:1px solid rgba(201,168,76,.15);background:rgba(255,255,255,.08);color:var(--cream);font-family:'Courier Prime',monospace;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;user-select:none;-webkit-user-select:none;-webkit-appearance:none;touch-action:manipulation}
+.key{height:50px;min-width:28px;flex:1;max-width:40px;border-radius:5px;border:1px solid rgba(201,168,76,.15);background:rgba(255,255,255,.08);color:var(--cream);font-family:'Courier Prime',monospace;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;user-select:none;-webkit-user-select:none;-webkit-appearance:none}
 .key:active{transform:scale(.92);filter:brightness(1.3)}
 .key.wide{min-width:48px;max-width:56px;font-size:10px;letter-spacing:.5px}
 .key[data-state="correct"]{background:var(--correct);border-color:var(--correct);color:white}
@@ -192,6 +232,95 @@ body{
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:rgba(201,168,76,.3);border-radius:2px}
+
+/* ── BOTTOM NAV ── */
+:root { --nav-h: 58px; }
+.screen.has-nav { padding-bottom: calc(var(--nav-h) + 4px); }
+.bottom-nav { position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);background:linear-gradient(180deg,rgba(10,22,16,.97),rgba(15,30,22,1));border-top:1px solid rgba(201,168,76,.2);display:flex;z-index:500;backdrop-filter:blur(12px) }
+.nav-tab { flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;border:none;background:none;color:var(--gray-mid);transition:color .2s;padding:6px 0;position:relative }
+.nav-tab.active { color:var(--gold-light) }
+.nav-tab-icon { font-size:20px;line-height:1 }
+.nav-tab-label { font-family:'Courier Prime',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase }
+.nav-badge { position:absolute;top:5px;right:calc(50% - 18px);background:#e06060;color:#fff;font-size:9px;font-family:'Courier Prime',monospace;font-weight:700;border-radius:10px;padding:1px 5px;min-width:16px;text-align:center }
+/* ── LOADING ── */
+.loading-screen { position:fixed;inset:0;background:var(--green-deep);display:flex;align-items:center;justify-content:center;z-index:999;flex-direction:column;gap:14px }
+.loading-title { font-family:'Playfair Display',serif;font-size:22px;color:var(--gold-light) }
+.spinner { width:22px;height:22px;border:2px solid rgba(201,168,76,.3);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite }
+@keyframes spin { to { transform:rotate(360deg) } }
+/* ── AUTH SCREEN ── */
+#auth-screen { justify-content:center;padding:36px 22px }
+.auth-logo { font-size:50px;display:block;margin-bottom:12px;filter:drop-shadow(0 4px 12px rgba(201,168,76,.4));animation:flagWave 3s ease-in-out infinite;text-align:center }
+.auth-title { font-family:'Playfair Display',serif;font-size:clamp(30px,7vw,46px);font-weight:900;color:var(--gold-light);letter-spacing:2px;text-align:center;text-shadow:0 2px 20px rgba(201,168,76,.3) }
+.auth-subtitle { font-family:'Libre Baskerville',serif;font-style:italic;color:var(--gray-light);font-size:12px;letter-spacing:3px;text-align:center;text-transform:uppercase;margin-top:6px }
+.auth-box { width:100%;max-width:380px;background:rgba(255,255,255,.04);border:1px solid rgba(201,168,76,.2);border-radius:12px;padding:24px 22px;margin-top:26px }
+.auth-tabs { display:flex;margin-bottom:20px;border-bottom:1px solid rgba(201,168,76,.2) }
+.auth-tab { flex:1;padding:10px;text-align:center;font-family:'Courier Prime',monospace;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--gray-mid);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .2s }
+.auth-tab.active { color:var(--gold-light);border-bottom-color:var(--gold) }
+.auth-form { display:none }
+.auth-form.active { display:block }
+.forgot-link { font-family:'Courier Prime',monospace;font-size:11px;color:var(--gray-mid);cursor:pointer;letter-spacing:1px;margin-top:10px;display:inline-block }
+.field-label { font-family:'Courier Prime',monospace;font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:6px }
+.field-input { width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(201,168,76,.3);border-radius:6px;padding:12px 14px;color:var(--cream);font-family:'Libre Baskerville',serif;font-size:16px;outline:none;transition:border-color .2s;-webkit-appearance:none }
+.field-input:focus { border-color:var(--gold) }
+.field-input::placeholder { color:var(--gray-mid);font-style:italic;font-size:14px }
+.form-group { margin-bottom:14px }
+.error-msg { color:#e06060;font-size:12px;font-family:'Courier Prime',monospace;margin-top:8px }
+.btn-sm { padding:8px 14px;font-size:13px }
+.btn-full { width:100%;display:block }
+.select-input { width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(201,168,76,.3);border-radius:6px;padding:12px 14px;color:var(--cream);font-family:'Libre Baskerville',serif;font-size:16px;outline:none;-webkit-appearance:none;margin-bottom:12px }
+.select-input option { background:#1a3a2a;color:var(--cream) }
+/* ── HOME USER BAR ── */
+.home-user-bar { display:flex;align-items:center;justify-content:space-between;width:100%;max-width:420px;margin-bottom:16px;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(201,168,76,.15);border-radius:8px }
+.home-user-name { font-family:'Playfair Display',serif;font-size:14px;color:var(--cream) }
+.home-user-name span { font-size:10px;font-family:'Courier Prime',monospace;color:var(--gold);letter-spacing:1px;display:block;margin-bottom:1px }
+/* ── TAB SCREENS ── */
+.tab-header { width:100%;background:linear-gradient(180deg,rgba(10,25,18,.97),rgba(26,58,42,.8));border-bottom:1px solid rgba(201,168,76,.2);padding:14px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:50;backdrop-filter:blur(10px) }
+.tab-header-title { font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--gold-light);flex:1 }
+/* ── MATCH CARDS ── */
+.match-card { background:rgba(255,255,255,.04);border:1px solid rgba(201,168,76,.18);border-radius:10px;padding:13px 14px;margin-bottom:11px;cursor:pointer }
+.match-card:active { opacity:.8 }
+.match-card-header { display:flex;align-items:center;justify-content:space-between;margin-bottom:8px }
+.match-course-nm { font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--cream) }
+.match-status-badge { font-family:'Courier Prime',monospace;font-size:10px;letter-spacing:1px;padding:3px 8px;border-radius:10px;text-transform:uppercase }
+.match-status-badge.active { background:rgba(82,183,136,.2);color:var(--green-light);border:1px solid rgba(82,183,136,.3) }
+.match-status-badge.complete { background:rgba(201,168,76,.15);color:var(--gold);border:1px solid rgba(201,168,76,.3) }
+.match-players { display:flex;gap:8px }
+.match-player { flex:1;background:rgba(0,0,0,.2);border-radius:6px;padding:8px 10px }
+.match-player-name { font-family:'Courier Prime',monospace;font-size:10px;letter-spacing:1px;color:var(--gray-mid);text-transform:uppercase;margin-bottom:3px }
+.match-player-score { font-family:'Playfair Display',serif;font-size:18px;font-weight:700 }
+.match-player-holes { font-size:10px;color:var(--gray-mid);font-family:'Courier Prime',monospace }
+.match-player.is-you .match-player-name { color:var(--gold) }
+.winner-banner { background:linear-gradient(135deg,rgba(201,168,76,.15),rgba(124,92,58,.15));border:1px solid rgba(201,168,76,.35);border-radius:8px;padding:10px 14px;text-align:center;margin-top:10px }
+.winner-title { font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:var(--gold-light) }
+/* ── FRIEND CARDS ── */
+.friend-card { background:rgba(255,255,255,.04);border:1px solid rgba(201,168,76,.15);border-radius:8px;padding:11px 13px;margin-bottom:9px;display:flex;align-items:center;gap:11px }
+.friend-avatar { width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--green-mid),var(--green-deep));border:1px solid rgba(201,168,76,.3);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:var(--gold-light);flex-shrink:0 }
+.friend-name { font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:var(--cream);flex:1 }
+.request-card { background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.25);border-radius:8px;padding:11px 13px;margin-bottom:9px;display:flex;align-items:center;gap:10px }
+.request-name { font-family:'Playfair Display',serif;font-size:14px;color:var(--cream);flex:1 }
+.search-result-card { background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:11px 13px;margin-bottom:8px;display:flex;align-items:center;gap:10px }
+.search-row { display:flex;gap:10px;margin-bottom:16px }
+/* ── MODAL ── */
+.modal-overlay { position:fixed;inset:0;background:rgba(10,22,16,.92);backdrop-filter:blur(8px);z-index:600;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s }
+.modal-overlay.visible { opacity:1;pointer-events:all }
+.modal-sheet { width:100%;max-width:480px;background:linear-gradient(160deg,var(--green-felt),var(--green-deep));border:1px solid rgba(201,168,76,.3);border-radius:16px 16px 0 0;padding:22px 18px 32px;transform:translateY(100%);transition:transform .3s;position:relative }
+.modal-overlay.visible .modal-sheet { transform:translateY(0) }
+.modal-title { font-family:'Playfair Display',serif;font-size:19px;font-weight:700;color:var(--gold-light);margin-bottom:18px }
+.modal-close { position:absolute;top:14px;right:14px;background:none;border:1px solid rgba(201,168,76,.3);color:var(--gold);border-radius:50%;width:28px;height:28px;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center }
+/* ── MATCH GAME EXTRA BAR ── */
+.match-opp-bar { width:100%;background:rgba(10,22,16,.8);border-bottom:1px solid rgba(255,255,255,.06);padding:7px 14px;display:flex;align-items:center;gap:10px }
+.opp-avatar-sm { width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--green-mid),var(--green-deep));border:1px solid rgba(201,168,76,.3);display:flex;align-items:center;justify-content:center;font-size:11px;font-family:'Playfair Display',serif;font-weight:700;color:var(--gold-light);flex-shrink:0 }
+.opp-info { flex:1 }
+.opp-name-sm { font-family:'Courier Prime',monospace;font-size:10px;color:var(--gray-mid);letter-spacing:1px }
+.opp-score-sm { font-family:'Playfair Display',serif;font-size:13px;font-weight:700;color:var(--cream) }
+.opp-holes-sm { font-family:'Courier Prime',monospace;font-size:10px;color:var(--gray-mid);margin-left:6px }
+.match-back-btn { background:none;border:1px solid rgba(201,168,76,.3);color:var(--gold);border-radius:6px;padding:5px 10px;font-family:'Courier Prime',monospace;font-size:11px;cursor:pointer;letter-spacing:1px;flex-shrink:0 }
+/* ── EMPTY STATE ── */
+.empty-state { text-align:center;padding:32px 16px;color:var(--gray-mid) }
+.empty-state-icon { font-size:34px;display:block;margin-bottom:10px }
+.empty-state-text { font-family:'Playfair Display',serif;font-size:15px;color:var(--cream);margin-bottom:4px }
+.empty-state-sub { font-size:12px;font-style:italic }
+
 </style>
 </head>
 <body>
@@ -199,8 +328,46 @@ body{
 <div class="toast-container" id="toast-container"></div>
 <div class="confetti-container" id="confetti-container"></div>
 
+<!-- LOADING -->
+<div class="loading-screen" id="loading-screen">
+  <div style="font-size:50px">⛳</div>
+  <div class="loading-title">Word Golf</div>
+  <div class="spinner"></div>
+</div>
+
+<!-- AUTH SCREEN -->
+<div id="auth-screen" class="screen">
+  <span class="auth-logo">⛳</span>
+  <h1 class="auth-title">WORD GOLF</h1>
+  <p class="auth-subtitle">18 Holes · Par 72 · Lower is Better</p>
+  <div class="auth-box">
+    <div class="auth-tabs">
+      <div class="auth-tab active" onclick="switchAuthTab('login')">Sign In</div>
+      <div class="auth-tab" onclick="switchAuthTab('register')">Create Account</div>
+    </div>
+    <div id="auth-login" class="auth-form active">
+      <div class="form-group"><label class="field-label">Email</label><input class="field-input" id="login-email" type="email" placeholder="your@email.com" autocomplete="email"></div>
+      <div class="form-group"><label class="field-label">Password</label><input class="field-input" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password"></div>
+      <div id="login-error" class="error-msg" style="display:none"></div>
+      <button class="btn btn-full" onclick="doLogin()" style="margin-top:4px">Sign In →</button>
+      <div style="text-align:center;margin-top:11px"><span class="forgot-link" onclick="doForgotPassword()">Forgot password?</span></div>
+    </div>
+    <div id="auth-register" class="auth-form">
+      <div class="form-group"><label class="field-label">Display Name</label><input class="field-input" id="reg-name" type="text" placeholder="Your name" autocomplete="nickname" maxlength="24"></div>
+      <div class="form-group"><label class="field-label">Email</label><input class="field-input" id="reg-email" type="email" placeholder="your@email.com" autocomplete="email"></div>
+      <div class="form-group"><label class="field-label">Password</label><input class="field-input" id="reg-password" type="password" placeholder="Min 6 characters" autocomplete="new-password"></div>
+      <div id="reg-error" class="error-msg" style="display:none"></div>
+      <button class="btn btn-full" onclick="doRegister()" style="margin-top:4px">Create Account →</button>
+    </div>
+  </div>
+</div>
+
 <!-- HOME -->
-<div id="home-screen" class="screen active">
+<div id="home-screen" class="screen has-nav">
+  <div class="home-user-bar">
+    <div class="home-user-name"><span>Signed in as</span><span id="home-display-name">—</span></div>
+    <button class="btn btn-secondary btn-sm" onclick="doLogout()">Sign Out</button>
+  </div>
   <div class="home-header">
     <span class="flag-icon">⛳</span>
     <h1 class="game-title">WORD GOLF</h1>
@@ -241,6 +408,102 @@ body{
   </div>
 </div>
 
+<!-- MATCHES SCREEN -->
+<div id="matches-screen" class="screen has-nav">
+  <div class="tab-header">
+    <div class="tab-header-title">⚔️ Matches</div>
+    <button class="btn btn-sm" onclick="openNewMatchModal()">+ New Match</button>
+  </div>
+  <div style="width:100%;max-width:480px;padding:18px 16px">
+    <div id="matches-list"><div class="empty-state"><span class="empty-state-icon">⚔️</span><div class="empty-state-text">No matches yet</div><div class="empty-state-sub">Challenge a friend to start playing</div></div></div>
+  </div>
+</div>
+
+<!-- FRIENDS SCREEN -->
+<div id="friends-screen" class="screen has-nav">
+  <div class="tab-header"><div class="tab-header-title">🤝 Friends</div></div>
+  <div style="width:100%;max-width:480px;padding:18px 16px">
+    <div class="section-label">Find Players</div>
+    <div class="search-row">
+      <input class="field-input" id="friend-search-input" placeholder="Search by display name…" style="flex:1">
+      <button class="btn btn-sm" onclick="searchFriends()">Search</button>
+    </div>
+    <div id="friend-search-results"></div>
+    <div id="friend-requests-section" style="display:none">
+      <div class="section-label" style="margin-top:14px">Friend Requests</div>
+      <div id="friend-requests-list"></div>
+    </div>
+    <div class="section-label" style="margin-top:14px">Friends</div>
+    <div id="friends-list"><div class="empty-state" style="padding:14px 0"><span class="empty-state-icon">🤝</span><div class="empty-state-text">No friends yet</div><div class="empty-state-sub">Search above to add players</div></div></div>
+  </div>
+</div>
+
+<!-- MATCH GAME SCREEN -->
+<div id="match-game-screen" class="screen">
+  <div class="game-header">
+    <button class="scorecard-toggle-btn" onclick="toggleMatchScorecard()">📋</button>
+    <div class="hole-info"><div class="hole-number" id="match-hole-number-display">Hole 1 of 18 · Par 4</div></div>
+    <div class="score-badge" onclick="toggleMatchScorecard()" id="match-running-score-badge">E</div>
+  </div>
+  <div class="match-opp-bar">
+    <div class="opp-avatar-sm" id="match-opp-avatar">?</div>
+    <div class="opp-info">
+      <div class="opp-name-sm" id="match-opp-name-sm">Opponent</div>
+      <div><span class="opp-score-sm" id="match-opp-score-sm">E</span><span class="opp-holes-sm" id="match-opp-holes-sm">0/18 holes</span></div>
+    </div>
+    <button class="match-back-btn" onclick="exitMatchGame()">← Exit</button>
+  </div>
+  <div class="grid-container"><div class="grid" id="match-game-grid"></div></div>
+  <div class="keyboard" id="match-keyboard"></div>
+</div>
+
+<!-- MATCH SCORECARD PANEL -->
+<div class="scorecard-panel" id="match-scorecard-panel">
+  <div class="scorecard-inner">
+    <div class="scorecard-header">
+      <div class="scorecard-title" id="match-sc-course-name">Match Scorecard</div>
+      <button class="scorecard-close" onclick="toggleMatchScorecard()">✕</button>
+    </div>
+    <div id="match-scorecard-content"></div>
+  </div>
+</div>
+
+<!-- NEW MATCH MODAL -->
+<div class="modal-overlay" id="new-match-modal">
+  <div class="modal-sheet">
+    <button class="modal-close" onclick="closeNewMatchModal()">✕</button>
+    <div class="modal-title">Start a Match</div>
+    <div class="form-group">
+      <label class="field-label">Challenge</label>
+      <select class="select-input" id="match-friend-select"><option value="">— Select a friend —</option></select>
+    </div>
+    <div class="form-group">
+      <label class="field-label">Course</label>
+      <select class="select-input" id="match-course-select">
+        <option value="PEB01">Pebble Beach</option>
+        <option value="AUG01">Augusta National</option>
+        <option value="STA01">St. Andrews</option>
+      </select>
+    </div>
+    <button class="btn btn-full" onclick="createMatch()">⛳ Start Match</button>
+  </div>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav" id="bottom-nav" style="display:none">
+  <button class="nav-tab active" id="nav-play" onclick="navTo('play')">
+    <div class="nav-tab-icon">⛳</div><div class="nav-tab-label">Play</div>
+  </button>
+  <button class="nav-tab" id="nav-matches" onclick="navTo('matches')">
+    <div class="nav-tab-icon">⚔️</div><div class="nav-tab-label">Matches</div>
+    <div class="nav-badge" id="matches-badge" style="display:none">0</div>
+  </button>
+  <button class="nav-tab" id="nav-friends" onclick="navTo('friends')">
+    <div class="nav-tab-icon">🤝</div><div class="nav-tab-label">Friends</div>
+    <div class="nav-badge" id="friends-badge" style="display:none">0</div>
+  </button>
+</nav>
+
 <!-- BUILDER -->
 <div id="builder-screen" class="screen">
   <div class="builder-header">
@@ -269,7 +532,6 @@ body{
     <button class="scorecard-toggle-btn" onclick="toggleScorecard()">📋</button>
     <div class="hole-info">
       <div class="hole-number" id="hole-number-display">Hole 1 of 18 · Par 4</div>
-      <div class="hole-flavor" id="hole-flavor-text"></div>
     </div>
     <div class="score-badge" onclick="toggleScorecard()" id="running-score-badge">E</div>
   </div>
@@ -813,35 +1075,6 @@ function spawnConfetti(count){
 }
 
 // ═══════════════════════════
-//  MOBILE: PREVENT ZOOM
-//  Mirrors NYT Wordle — no pinch zoom, no double-tap zoom, no input zoom
-// ═══════════════════════════
-(function preventMobileZoom(){
-  // Block pinch-to-zoom
-  document.addEventListener('touchmove',function(e){
-    if(e.touches&&e.touches.length>1)e.preventDefault();
-  },{passive:false});
-
-  // Block double-tap zoom
-  let lastTap=0;
-  document.addEventListener('touchend',function(e){
-    const now=Date.now();
-    if(now-lastTap<300){
-      // Allow double-tap on input fields so cursor works correctly
-      if(e.target.tagName!=='INPUT'&&e.target.tagName!=='TEXTAREA'){
-        e.preventDefault();
-      }
-    }
-    lastTap=now;
-  },{passive:false});
-
-  // Block Safari gesture zoom
-  document.addEventListener('gesturestart',function(e){e.preventDefault();},{passive:false});
-  document.addEventListener('gesturechange',function(e){e.preventDefault();},{passive:false});
-  document.addEventListener('gestureend',function(e){e.preventDefault();},{passive:false});
-})();
-
-// ═══════════════════════════
 //  INIT
 // ═══════════════════════════
 initHome();
@@ -854,6 +1087,619 @@ initHome();
     history.replaceState(null,'',window.location.pathname);
   }
 })();
+
+// ═══════════════════════════════════════════
+//  ▼▼▼  PASTE YOUR FIREBASE CONFIG HERE  ▼▼▼
+// ═══════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyAitaGQbW_eVedEERuViiolwmT1Zk79-kQ",
+  authDomain: "word-golf-f3baa.firebaseapp.com",
+  projectId: "word-golf-f3baa",
+  storageBucket: "word-golf-f3baa.firebasestorage.app",
+  messagingSenderId: "900326965927",
+  appId: "1:900326965927:web:0a659af5e7a5d2f2b25182",
+  measurementId: "G-WWDDSX6XJM"
+};
+// ═══════════════════════════════════════════
+
+// Validate config before initializing
+(function checkConfig() {
+  const missing = Object.values(firebaseConfig).some(v => !v || v.startsWith('YOUR_'));
+  if (missing) {
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('auth-screen').classList.add('active');
+      const box = document.querySelector('.auth-box');
+      if (box) {
+        const warn = document.createElement('div');
+        warn.style.cssText = 'background:rgba(192,57,43,.15);border:1px solid rgba(192,57,43,.4);border-radius:8px;padding:14px;margin-bottom:16px;font-family:Courier Prime,monospace;font-size:12px;color:#e06060;line-height:1.6';
+        warn.innerHTML = '⚠️ <strong>Firebase not configured.</strong><br>Open this HTML file, find the <code>firebaseConfig</code> block near the top of the &lt;script&gt;, and paste in your credentials from the Firebase Console.';
+        box.insertBefore(warn, box.firstChild);
+      }
+    });
+  }
+})();
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db   = firebase.firestore();
+
+// ─── AUTH STATE ───────────────────────────────────────────
+let currentUser=null, currentUserDoc=null, unsubMatches=null, unsubUserDoc=null;
+
+auth.onAuthStateChanged(async user => {
+  document.getElementById('loading-screen').style.display = 'none';
+  if (user) {
+    currentUser = user;
+    await ensureUserDoc(user);
+    subscribeUserDoc(user.uid);
+    subscribeMatches(user.uid);
+    document.getElementById('bottom-nav').style.display = 'flex';
+    document.getElementById('home-display-name').textContent = currentUserDoc?.displayName || user.email;
+    navTo('play');
+  } else {
+    currentUser = null; currentUserDoc = null;
+    if (unsubMatches) { unsubMatches(); unsubMatches = null; }
+    if (unsubUserDoc) { unsubUserDoc(); unsubUserDoc = null; }
+    document.getElementById('bottom-nav').style.display = 'none';
+    showScreen('auth-screen');
+  }
+});
+
+async function ensureUserDoc(user) {
+  // If doRegister already populated currentUserDoc, use it — avoid duplicate writes
+  if (currentUserDoc && currentUserDoc.email === user.email) return;
+  try {
+    const ref  = db.collection('users').doc(user.uid);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      const name = user.displayName || user.email.split('@')[0];
+      const doc  = { displayName: name, email: user.email, friends: [], friendRequests: [] };
+      await ref.set(doc);
+      currentUserDoc = doc;
+    } else {
+      currentUserDoc = snap.data();
+      // Backfill displayName if missing (older accounts)
+      if (!currentUserDoc.displayName && user.displayName) {
+        currentUserDoc.displayName = user.displayName;
+        await ref.update({ displayName: user.displayName });
+      }
+    }
+  } catch(e) {
+    console.error('ensureUserDoc failed:', e.message);
+    // Fall back to a minimal local doc so the app still loads
+    if (!currentUserDoc) {
+      currentUserDoc = {
+        displayName: user.displayName || user.email.split('@')[0],
+        email: user.email, friends: [], friendRequests: []
+      };
+    }
+  }
+}
+
+function subscribeUserDoc(uid) {
+  if (unsubUserDoc) unsubUserDoc();
+  unsubUserDoc = db.collection('users').doc(uid).onSnapshot(snap => {
+    if (snap.exists) {
+      currentUserDoc = snap.data();
+      const el = document.getElementById('home-display-name');
+      if (el) el.textContent = currentUserDoc.displayName || currentUser?.email || '—';
+      updateFriendRequestBadge();
+      if (document.getElementById('friends-screen').classList.contains('active')) refreshFriendsScreen();
+    }
+  });
+}
+
+function subscribeMatches(uid) {
+  if (unsubMatches) unsubMatches();
+  let m1 = [], m2 = [];
+  const merge = () => renderMatchesList([...m1, ...m2]);
+  const u1 = db.collection('matches').where('player1','==',uid).onSnapshot(s => { m1 = s.docs.map(d=>({id:d.id,...d.data()})); merge(); });
+  const u2 = db.collection('matches').where('player2','==',uid).onSnapshot(s => { m2 = s.docs.map(d=>({id:d.id,...d.data()})); merge(); });
+  unsubMatches = () => { u1(); u2(); };
+}
+
+// ─── AUTH ACTIONS ─────────────────────────────────────────
+function switchAuthTab(tab) {
+  document.querySelectorAll('.auth-tab').forEach((t,i) => t.classList.toggle('active', i===(tab==='login'?0:1)));
+  document.getElementById('auth-login').classList.toggle('active', tab==='login');
+  document.getElementById('auth-register').classList.toggle('active', tab==='register');
+}
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass  = document.getElementById('login-password').value;
+  const err   = document.getElementById('login-error'); err.style.display = 'none';
+  if (!email || !pass) { err.textContent = 'Please enter your email and password.'; err.style.display = 'block'; return; }
+  try { await auth.signInWithEmailAndPassword(email, pass); }
+  catch(e) {
+    console.error('Login error:', e.code, e.message);
+    err.textContent = friendlyAuthError(e.code);
+    err.style.display = 'block';
+  }
+}
+async function doRegister() {
+  const name  = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const pass  = document.getElementById('reg-password').value;
+  const err   = document.getElementById('reg-error'); err.style.display = 'none';
+  if (!name)  { err.textContent = 'Display name is required.'; err.style.display = 'block'; return; }
+  if (!email) { err.textContent = 'Email is required.'; err.style.display = 'block'; return; }
+  if (pass.length < 6) { err.textContent = 'Password must be at least 6 characters.'; err.style.display = 'block'; return; }
+  try {
+    // Create the Firebase Auth account
+    const cred = await auth.createUserWithEmailAndPassword(email, pass);
+    // Set display name on auth profile
+    await cred.user.updateProfile({ displayName: name });
+    // Pre-populate currentUserDoc so onAuthStateChanged skips the Firestore create
+    // (ensureUserDoc checks snap.exists, but the write below races with it — 
+    //  setting currentUserDoc here ensures the race is harmless)
+    currentUserDoc = { displayName: name, email, friends: [], friendRequests: [] };
+    // Write user document — wrapped separately so auth errors vs Firestore errors are distinct
+    try {
+      await db.collection('users').doc(cred.user.uid).set(currentUserDoc);
+    } catch(fsErr) {
+      // Firestore write failed — most likely rules not set up yet.
+      // Auth account was created successfully, so onAuthStateChanged will still fire.
+      // ensureUserDoc() in the state handler will retry the write.
+      console.warn('Firestore user doc write failed (will retry on login):', fsErr.message);
+    }
+    // onAuthStateChanged fires automatically — no need to call navTo here
+  } catch(e) {
+    console.error('Registration error:', e.code, e.message);
+    err.textContent = friendlyAuthError(e.code);
+    err.style.display = 'block';
+  }
+}
+async function doForgotPassword() {
+  const email = document.getElementById('login-email').value.trim();
+  if (!email) { toast('Enter your email first'); return; }
+  try { await auth.sendPasswordResetEmail(email); toast('Reset email sent!'); }
+  catch(e) { toast('Could not send reset email'); }
+}
+function doLogout() { if (!confirm('Sign out?')) return; auth.signOut(); }
+function friendlyAuthError(code) {
+  const map = {
+    'auth/invalid-email':          'Invalid email address.',
+    'auth/user-not-found':         'No account found with that email.',
+    'auth/wrong-password':         'Incorrect password.',
+    'auth/email-already-in-use':   'That email is already registered.',
+    'auth/weak-password':          'Password must be at least 6 characters.',
+    'auth/invalid-credential':     'Invalid email or password.',
+    'auth/too-many-requests':      'Too many attempts — please wait a moment.',
+    'auth/network-request-failed': 'Network error — check your connection.',
+    'auth/operation-not-allowed':  'Email/password sign-in is not enabled. Check your Firebase Console → Authentication → Sign-in method.',
+    'auth/configuration-not-found':'Firebase is not configured. Paste your firebaseConfig credentials into the JS block at the top of this file.',
+    'auth/api-key-not-valid':      'Firebase API key is invalid. Paste your firebaseConfig credentials into the JS block.',
+  };
+  return map[code] || (code ? `Error: ${code}` : 'Something went wrong. Please try again.');
+}
+
+// ─── NAVIGATION ───────────────────────────────────────────
+// Override existing showScreen and goHome
+const _origShowScreen = showScreen;
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0, 0);
+}
+function navTo(tab) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('nav-' + tab).classList.add('active');
+  if (tab === 'play') { showScreen('home-screen'); initHome(); }
+  else if (tab === 'matches') { showScreen('matches-screen'); }
+  else if (tab === 'friends') { showScreen('friends-screen'); refreshFriendsScreen(); }
+}
+function goHome() { navTo('play'); }
+
+// ─── FRIENDS ──────────────────────────────────────────────
+function updateFriendRequestBadge() {
+  const reqs = currentUserDoc?.friendRequests || [];
+  const b = document.getElementById('friends-badge');
+  if (reqs.length > 0) { b.textContent = reqs.length; b.style.display = 'block'; } else b.style.display = 'none';
+}
+async function searchFriends() {
+  const q = document.getElementById('friend-search-input').value.trim();
+  if (!q) { toast('Enter a name to search'); return; }
+  const res = document.getElementById('friend-search-results');
+  res.innerHTML = '<div style="color:var(--gray-mid);font-size:12px;padding:8px 0">Searching…</div>';
+  try {
+    const snap = await db.collection('users').where('displayName','>=',q).where('displayName','<=',q+'').limit(10).get();
+    if (snap.empty) { res.innerHTML = '<div style="color:var(--gray-mid);font-size:12px;padding:8px 0">No players found.</div>'; return; }
+    res.innerHTML = '';
+    snap.forEach(doc => {
+      if (doc.id === currentUser.uid) return;
+      const data = doc.data();
+      const isFriend = (currentUserDoc?.friends || []).includes(doc.id);
+      const requested = (data.friendRequests || []).includes(currentUser.uid);
+      const card = document.createElement('div'); card.className = 'search-result-card';
+      card.innerHTML = `<div class="friend-avatar">${(data.displayName||'?')[0].toUpperCase()}</div>
+        <div class="friend-name" style="flex:1">${data.displayName}</div>
+        ${isFriend ? '<span style="color:var(--green-light);font-size:12px;font-family:monospace">Friends ✓</span>'
+          : requested ? '<span style="color:var(--gray-mid);font-size:12px;font-family:monospace">Requested</span>'
+          : `<button class="btn btn-sm" onclick="sendFriendRequest('${doc.id}','${data.displayName}')">Add</button>`}`;
+      res.appendChild(card);
+    });
+  } catch(e) { res.innerHTML = '<div style="color:#e06060;font-size:12px;padding:8px 0">Search failed.</div>'; }
+}
+async function sendFriendRequest(toUid, toName) {
+  try {
+    await db.collection('users').doc(toUid).update({ friendRequests: firebase.firestore.FieldValue.arrayUnion(currentUser.uid) });
+    toast(`Friend request sent to ${toName}!`);
+    document.getElementById('friend-search-results').innerHTML = '';
+    document.getElementById('friend-search-input').value = '';
+  } catch(e) { toast('Could not send request'); }
+}
+async function acceptFriendRequest(fromUid) {
+  const batch = db.batch();
+  batch.update(db.collection('users').doc(currentUser.uid), { friends: firebase.firestore.FieldValue.arrayUnion(fromUid), friendRequests: firebase.firestore.FieldValue.arrayRemove(fromUid) });
+  batch.update(db.collection('users').doc(fromUid), { friends: firebase.firestore.FieldValue.arrayUnion(currentUser.uid) });
+  await batch.commit(); toast('Friend added! 🤝');
+}
+async function declineFriendRequest(fromUid) {
+  await db.collection('users').doc(currentUser.uid).update({ friendRequests: firebase.firestore.FieldValue.arrayRemove(fromUid) });
+}
+async function refreshFriendsScreen() {
+  if (!currentUserDoc) return;
+  const reqs = currentUserDoc.friendRequests || [];
+  const reqSec = document.getElementById('friend-requests-section');
+  const reqList = document.getElementById('friend-requests-list');
+  if (reqs.length > 0) {
+    reqSec.style.display = 'block'; reqList.innerHTML = '';
+    for (const uid of reqs) {
+      try {
+        const snap = await db.collection('users').doc(uid).get();
+        const name = snap.exists ? snap.data().displayName : uid;
+        const card = document.createElement('div'); card.className = 'request-card';
+        card.innerHTML = `<div class="friend-avatar">${name[0].toUpperCase()}</div>
+          <div class="request-name">${name}</div>
+          <div style="display:flex;gap:7px">
+            <button class="btn btn-sm" onclick="acceptFriendRequest('${uid}')">Accept</button>
+            <button class="btn btn-secondary btn-sm" onclick="declineFriendRequest('${uid}')">Decline</button>
+          </div>`;
+        reqList.appendChild(card);
+      } catch(e) {}
+    }
+  } else reqSec.style.display = 'none';
+  const friends = currentUserDoc.friends || [];
+  const fl = document.getElementById('friends-list');
+  if (!friends.length) { fl.innerHTML = '<div class="empty-state" style="padding:14px 0"><span class="empty-state-icon">🤝</span><div class="empty-state-text">No friends yet</div><div class="empty-state-sub">Search above to add players</div></div>'; return; }
+  fl.innerHTML = '';
+  for (const uid of friends) {
+    try {
+      const snap = await db.collection('users').doc(uid).get();
+      const name = snap.exists ? snap.data().displayName : uid;
+      const card = document.createElement('div'); card.className = 'friend-card';
+      card.innerHTML = `<div class="friend-avatar">${name[0].toUpperCase()}</div>
+        <div class="friend-name">${name}</div>
+        <button class="btn btn-sm" onclick="openNewMatchModalWith('${uid}','${name}')">⛳ Match</button>`;
+      fl.appendChild(card);
+    } catch(e) {}
+  }
+}
+
+// ─── MATCHES ──────────────────────────────────────────────
+let activeMatchId=null, activeMatchData=null, activeMatchOpponentName='Opponent', opponentUid=null;
+
+async function renderMatchesList(matches) {
+  const container = document.getElementById('matches-list');
+  matches.sort((a,b) => (a.status==='active'?0:1) - (b.status==='active'?0:1));
+  const activeCount = matches.filter(m => m.status==='active').length;
+  const badge = document.getElementById('matches-badge');
+  if (activeCount > 0) { badge.textContent = activeCount; badge.style.display = 'block'; } else badge.style.display = 'none';
+  if (!matches.length) { container.innerHTML = '<div class="empty-state"><span class="empty-state-icon">⚔️</span><div class="empty-state-text">No matches yet</div><div class="empty-state-sub">Tap "+ New Match" to challenge a friend</div></div>'; return; }
+  container.innerHTML = '';
+  for (const match of matches) {
+    const isP1 = match.player1 === currentUser.uid;
+    const oppU = isP1 ? match.player2 : match.player1;
+    const myS  = (match.scores && match.scores[currentUser.uid]) || [];
+    const oppS = (match.scores && match.scores[oppU]) || [];
+    const myVP  = myS.filter(s=>s!=null).reduce((a,s)=>a+scoreInfo(s).vspar, 0);
+    const oppVP = oppS.filter(s=>s!=null).reduce((a,s)=>a+scoreInfo(s).vspar, 0);
+    const myH   = myS.filter(s=>s!=null).length;
+    const oppH  = oppS.filter(s=>s!=null).length;
+    const course = COURSES.find(c=>c.id===match.courseId) || {name: match.courseId};
+    let oppName = 'Opponent';
+    try { const snap = await db.collection('users').doc(oppU).get(); if (snap.exists) oppName = snap.data().displayName; } catch(e) {}
+    const card = document.createElement('div'); card.className = 'match-card';
+    card.innerHTML = `
+      <div class="match-card-header">
+        <div class="match-course-nm">${course.name}</div>
+        <div class="match-status-badge ${match.status}">${match.status==='active'?'Active':'Complete'}</div>
+      </div>
+      <div class="match-players">
+        <div class="match-player is-you">
+          <div class="match-player-name">You</div>
+          <div class="match-player-score" style="color:${myVP<0?'var(--gold)':myVP===0?'var(--green-light)':'#e06060'}">${fmtVP(myVP)}</div>
+          <div class="match-player-holes">${myH}/18 holes</div>
+        </div>
+        <div style="display:flex;align-items:center;font-family:'Playfair Display',serif;color:var(--gray-mid);font-size:16px;padding:0 4px">vs</div>
+        <div class="match-player">
+          <div class="match-player-name">${oppName}</div>
+          <div class="match-player-score" style="color:${oppVP<0?'var(--gold)':oppVP===0?'var(--green-light)':'#e06060'}">${fmtVP(oppVP)}</div>
+          <div class="match-player-holes">${oppH}/18 holes</div>
+        </div>
+      </div>
+      ${match.status==='complete' ? `<div class="winner-banner"><div class="winner-title">${match.winner===currentUser.uid?'🏆 You win!':(match.winner==='tie'?'🤝 Tie game!':'💀 '+oppName+' wins')}</div></div>` : ''}`;
+    if (match.status === 'active') card.onclick = () => openMatchGame(match.id, match, oppU, oppName);
+    container.appendChild(card);
+  }
+}
+
+function openNewMatchModal() {
+  if (!currentUserDoc) { toast('Sign in to start matches'); return; }
+  const friends = currentUserDoc.friends || [];
+  const sel = document.getElementById('match-friend-select');
+  sel.innerHTML = '<option value="">Loading…</option>';
+  if (!friends.length) { toast('Add friends first'); return; }
+  Promise.all(friends.map(uid => db.collection('users').doc(uid).get())).then(snaps => {
+    sel.innerHTML = '<option value="">— Select a friend —</option>';
+    snaps.forEach((snap,i) => { if (snap.exists) { const o = document.createElement('option'); o.value = friends[i]; o.textContent = snap.data().displayName; sel.appendChild(o); } });
+  });
+  document.getElementById('new-match-modal').classList.add('visible');
+}
+function openNewMatchModalWith(uid, name) {
+  openNewMatchModal();
+  setTimeout(() => { const trySet = () => { const sel = document.getElementById('match-friend-select'); const opt = [...sel.options].find(o=>o.value===uid); if (opt) opt.selected = true; else setTimeout(trySet,200); }; trySet(); }, 300);
+}
+function closeNewMatchModal() { document.getElementById('new-match-modal').classList.remove('visible'); }
+
+async function createMatch() {
+  const friendUid = document.getElementById('match-friend-select').value;
+  const courseId  = document.getElementById('match-course-select').value;
+  if (!friendUid) { toast('Select a friend first'); return; }
+  const initScores = {};
+  initScores[currentUser.uid] = Array(18).fill(null);
+  initScores[friendUid]       = Array(18).fill(null);
+  try {
+    await db.collection('matches').add({ courseId, player1: currentUser.uid, player2: friendUid, scores: initScores, status: 'active', winner: null, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    closeNewMatchModal(); toast('Match created! ⛳'); navTo('matches');
+  } catch(e) { toast('Could not create match — check Firestore rules'); }
+}
+
+async function openMatchGame(matchId, matchData, oppU, oppName) {
+  activeMatchId = matchId; activeMatchData = matchData;
+  activeMatchOpponentName = oppName; opponentUid = oppU;
+  const course = COURSES.find(c=>c.id===matchData.courseId) || COURSES[0];
+  const myScores = (matchData.scores && matchData.scores[currentUser.uid]) || Array(18).fill(null);
+  let nextHole = myScores.findIndex(s => s === null);
+  if (nextHole === -1) nextHole = 17;
+  MG = {
+    courseId: course.id, courseName: course.name,
+    words: [...course.words], currentHole: nextHole,
+    scores: myScores.map(s => s === null ? undefined : s),
+    guesses: Array(18).fill(null).map(() => []),
+    completed: myScores.every(s => s !== null)
+  };
+  updateMatchOppBar();
+  showScreen('match-game-screen');
+  startMatchHole();
+}
+
+function updateMatchOppBar() {
+  if (!activeMatchData || !opponentUid) return;
+  const oppS = (activeMatchData.scores && activeMatchData.scores[opponentUid]) || [];
+  const oppVP = oppS.filter(s=>s!=null).reduce((a,s)=>a+scoreInfo(s).vspar, 0);
+  const oppH  = oppS.filter(s=>s!=null).length;
+  document.getElementById('match-opp-avatar').textContent = (activeMatchOpponentName||'?')[0].toUpperCase();
+  document.getElementById('match-opp-name-sm').textContent = activeMatchOpponentName;
+  document.getElementById('match-opp-score-sm').textContent = fmtVP(oppVP);
+  document.getElementById('match-opp-holes-sm').textContent = ` ${oppH}/18 holes`;
+}
+
+async function saveMatchHoleScore(holeIdx, score) {
+  if (!activeMatchId || !currentUser) return;
+  const key = `scores.${currentUser.uid}.${holeIdx}`;
+  const update = {}; update[key] = score;
+  await db.collection('matches').doc(activeMatchId).update(update);
+  const snap = await db.collection('matches').doc(activeMatchId).get();
+  activeMatchData = snap.data();
+  const myS  = activeMatchData.scores[currentUser.uid] || [];
+  const oppS = activeMatchData.scores[opponentUid] || [];
+  if (myS.every(s=>s!==null) && oppS.every(s=>s!==null)) {
+    const myVP  = myS.reduce((a,s)=>a+scoreInfo(s).vspar, 0);
+    const oppVP = oppS.reduce((a,s)=>a+scoreInfo(s).vspar, 0);
+    const winner = myVP < oppVP ? currentUser.uid : myVP > oppVP ? opponentUid : 'tie';
+    await db.collection('matches').doc(activeMatchId).update({ status: 'complete', winner });
+    if (winner === currentUser.uid) spawnConfetti(60);
+  }
+}
+
+function exitMatchGame() { showScreen('matches-screen'); activeMatchId=null; activeMatchData=null; MG=null; }
+
+// ─── MATCH GAME LOOP ──────────────────────────────────────
+let MG=null, MCG=[], mCurGuess='', mHoleActive=false, mHoleWord='', mKS={};
+
+function startMatchHole() {
+  if (!MG) return;
+  mHoleWord  = MG.words[MG.currentHole].toUpperCase();
+  MCG        = MG.guesses[MG.currentHole] ? [...MG.guesses[MG.currentHole]] : [];
+  mCurGuess  = ''; mKS = {}; mHoleActive = true;
+  MCG.forEach(g => updateMKS(g));
+  document.getElementById('match-hole-number-display').textContent = `Hole ${MG.currentHole+1} of 18 · Par 4`;
+  const vp = MG.scores.filter(s=>s!==undefined).reduce((a,s)=>a+scoreInfo(s).vspar, 0);
+  document.getElementById('match-running-score-badge').textContent = fmtVP(vp);
+  renderMatchGrid(); renderMatchKB();
+  if (MG.scores[MG.currentHole] !== undefined) { mHoleActive = false; showMatchResult(MG.scores[MG.currentHole]); }
+}
+
+const KBROWS2=[['Q','W','E','R','T','Y','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['ENTER','Z','X','C','V','B','N','M','⌫']];
+
+function renderMatchGrid() {
+  const g = document.getElementById('match-game-grid'); g.innerHTML = '';
+  for (let r=0; r<6; r++) {
+    const re = document.createElement('div'); re.className='grid-row'; re.id=`mrow-${r}`;
+    for (let c=0; c<5; c++) {
+      const t = document.createElement('div'); t.className='tile'; t.id=`mtile-${r}-${c}`;
+      if (r < MCG.length) { t.textContent=MCG[r][c]; t.setAttribute('data-state',evalMGuess(MCG[r])[c]); }
+      else if (r===MCG.length && c<mCurGuess.length) { t.textContent=mCurGuess[c]; t.classList.add('filled'); }
+      re.appendChild(t);
+    }
+    g.appendChild(re);
+  }
+}
+function updateMatchRow() {
+  const r = MCG.length;
+  for (let c=0; c<5; c++) {
+    const t = document.getElementById(`mtile-${r}-${c}`); if (!t) continue;
+    if (c < mCurGuess.length) { t.textContent=mCurGuess[c]; t.classList.add('filled'); }
+    else { t.textContent=''; t.classList.remove('filled'); }
+  }
+}
+function evalMGuess(guess) {
+  const res=Array(5).fill('absent'), wa=mHoleWord.split(''), ga=guess.split(''), used=Array(5).fill(false);
+  for (let i=0; i<5; i++) if (ga[i]===wa[i]) { res[i]='correct'; used[i]=true; }
+  for (let i=0; i<5; i++) { if (res[i]==='correct') continue; for (let j=0; j<5; j++) if (!used[j]&&ga[i]===wa[j]) { res[i]='present'; used[j]=true; break; } }
+  return res;
+}
+function updateMKS(guess) {
+  const res=evalMGuess(guess), p={correct:3,present:2,absent:1};
+  guess.split('').forEach((l,i) => { if ((p[res[i]]||0)>(p[mKS[l]]||0)) mKS[l]=res[i]; });
+}
+function renderMatchKB() {
+  const kb = document.getElementById('match-keyboard'); kb.innerHTML = '';
+  KBROWS2.forEach(row => {
+    const re = document.createElement('div'); re.className='kb-row';
+    row.forEach(k => {
+      const b = document.createElement('button'); b.className='key'+(k.length>1?' wide':''); b.textContent=k; b.dataset.key=k;
+      if (mKS[k]) b.setAttribute('data-state', mKS[k]);
+      b.addEventListener('click', () => handleMatchKey(k)); re.appendChild(b);
+    });
+    kb.appendChild(re);
+  });
+}
+function updateMatchKB() { document.querySelectorAll('#match-keyboard .key').forEach(b => { if (mKS[b.dataset.key]) b.setAttribute('data-state',mKS[b.dataset.key]); }); }
+
+function handleMatchKey(key) {
+  if (!mHoleActive) return;
+  if (document.getElementById('hole-result-overlay').classList.contains('visible')) return;
+  if (document.getElementById('match-scorecard-panel').classList.contains('visible')) return;
+  if (key==='⌫') { if (mCurGuess.length>0) { mCurGuess=mCurGuess.slice(0,-1); updateMatchRow(); } return; }
+  if (key==='ENTER') { submitMatchGuess(); return; }
+  if (/^[A-Z]$/.test(key) && mCurGuess.length<5) { mCurGuess+=key; updateMatchRow(); }
+}
+function submitMatchGuess() {
+  if (mCurGuess.length!==5) { toast('Not enough letters'); shakeMatchRow(MCG.length); return; }
+  if (!VALID.has(mCurGuess) && mCurGuess!==mHoleWord) { toast('Not a word'); shakeMatchRow(MCG.length); return; }
+  const ri = MCG.length;
+  MCG.push(mCurGuess); MG.guesses[MG.currentHole]=[...MCG];
+  const res = evalMGuess(mCurGuess); updateMKS(mCurGuess);
+  animMatchReveal(ri, mCurGuess, res, () => {
+    updateMatchKB();
+    const won=res.every(r=>r==='correct'), fail=MCG.length>=6&&!won;
+    if (won||fail) {
+      mHoleActive = false;
+      const s = won ? MCG.length : 7;
+      MG.scores[MG.currentHole] = s;
+      saveMatchHoleScore(MG.currentHole, s);
+      const vp = MG.scores.filter(x=>x!==undefined).reduce((a,x)=>a+scoreInfo(x).vspar, 0);
+      document.getElementById('match-running-score-badge').textContent = fmtVP(vp);
+      if (won && s<=3) spawnConfetti(s===1?120:s===2?80:40);
+      setTimeout(() => showMatchResult(s), 600);
+    } else { mCurGuess=''; updateMatchRow(); }
+  });
+  mCurGuess=''; updateMatchRow();
+}
+function animMatchReveal(row, guess, res, cb) {
+  for (let c=0; c<5; c++) {
+    const t = document.getElementById(`mtile-${row}-${c}`); if (!t) continue;
+    setTimeout(() => {
+      t.classList.add('flipping');
+      setTimeout(() => {
+        t.setAttribute('data-state', res[c]); t.classList.remove('flipping');
+        if (c===4) {
+          if (res.every(r=>r==='correct')) { for (let i=0;i<5;i++) setTimeout(()=>{const tt=document.getElementById(`mtile-${row}-${i}`);if(tt)tt.classList.add('bounce');},i*80); }
+          if (cb) setTimeout(cb, 300);
+        }
+      }, 250);
+    }, c*120);
+  }
+}
+function shakeMatchRow(r) { for (let c=0;c<5;c++) { const t=document.getElementById(`mtile-${r}-${c}`); if(t){t.classList.remove('shake');void t.offsetWidth;t.classList.add('shake');} } }
+
+function showMatchResult(s) {
+  const info = scoreInfo(s);
+  const ic = document.getElementById('result-icon');
+  ic.textContent=info.icon; ic.style.animation='none'; void ic.offsetWidth; ic.style.animation='';
+  document.getElementById('result-label').textContent = info.label;
+  document.getElementById('result-label').style.color  = info.color;
+  document.getElementById('result-score-text').textContent = s<=6 ? `${s} guess${s!==1?'es':''} · ${fmtVP(info.vspar)}` : 'Failed · +3';
+  document.getElementById('result-word').textContent = mHoleWord;
+  const allDone = MG.scores.filter(s=>s!==undefined).length >= 18;
+  document.getElementById('result-next-btn').textContent = allDone ? '📋 View Scorecard' : 'Next Hole →';
+  document.getElementById('result-next-btn').onclick = allDone ? showMatchFinalScorecard : nextMatchHole;
+  document.getElementById('hole-result-overlay').classList.add('visible');
+}
+function nextMatchHole() {
+  document.getElementById('hole-result-overlay').classList.remove('visible');
+  const nextIdx = MG.scores.findIndex((s,i) => i > MG.currentHole && s === undefined);
+  if (nextIdx === -1) { showMatchFinalScorecard(); return; }
+  MG.currentHole = nextIdx; startMatchHole();
+}
+function showMatchFinalScorecard() { document.getElementById('hole-result-overlay').classList.remove('visible'); toggleMatchScorecard(); }
+
+function toggleMatchScorecard() {
+  const p = document.getElementById('match-scorecard-panel'), v=p.classList.contains('visible');
+  if (!v) renderMatchSC();
+  p.classList.toggle('visible', !v);
+}
+function renderMatchSC() {
+  const el = document.getElementById('match-scorecard-content'); if (!el) return;
+  const oppS = (activeMatchData?.scores?.[opponentUid]) || [];
+  const myS  = MG.scores.map(s => s===undefined ? null : s);
+  const makeT = (start, end) => {
+    let h = `<table class="scorecard-table"><thead><tr><th>HOLE</th>`;
+    for (let i=start;i<=end;i++) h+=`<th>${i}</th>`;
+    h += `<th>TOT</th></tr><tr><th style="color:var(--gray-mid)">PAR</th>`;
+    for (let i=start;i<=end;i++) h+=`<td style="color:var(--gray-mid);font-size:10px">4</td>`;
+    h += `<td style="color:var(--gray-mid)">${(end-start+1)*4}</td></tr></thead><tbody>`;
+    const renderRow = (scores, label, labelColor) => {
+      let rt=0, row=`<tr><td style="color:${labelColor};font-size:10px;font-family:monospace">${label}</td>`;
+      for (let i=start;i<=end;i++) {
+        const sc=scores[i-1];
+        if (sc==null) { row+=`<td class="score-cell-pending">—</td>`; continue; }
+        const vp=scoreInfo(sc).vspar; rt+=vp;
+        let cl='score-cell-par';
+        if(vp<=-2)cl='score-cell-eagle';else if(vp===-1)cl='score-cell-birdie';
+        else if(vp===1)cl='score-cell-bogey';else if(vp===2)cl='score-cell-double';else if(vp>=3)cl='score-cell-triple';
+        row+=`<td class="${cl}">${sc===7?'X':sc}</td>`;
+      }
+      const sg=rt>0?'+':'';
+      row+=`<td style="font-weight:700;color:${rt<0?'var(--gold)':rt>0?'#e06060':'var(--green-light)'}">${sg}${rt}</td></tr>`;
+      return row;
+    };
+    h += renderRow(myS, 'You', 'var(--gold)');
+    h += renderRow(oppS.map(s=>s===null?null:s), activeMatchOpponentName||'Opp', 'var(--gray-mid)');
+    return h + '</tbody></table>';
+  };
+  const myVP  = myS.filter(s=>s!=null).reduce((a,s)=>a+scoreInfo(s).vspar, 0);
+  const oppVP = oppS.filter(s=>s!=null).reduce((a,s)=>a+scoreInfo(s).vspar, 0);
+  document.getElementById('match-sc-course-name').textContent = MG.courseName;
+  let html = makeT(1,9) + makeT(10,18);
+  html += `<div class="total-vs-par">You: <strong>${fmtVP(myVP)}</strong> &nbsp;·&nbsp; ${activeMatchOpponentName||'Opp'}: <strong>${fmtVP(oppVP)}</strong></div>`;
+  if (activeMatchData?.status==='complete') {
+    const w = activeMatchData.winner;
+    html += `<div class="winner-banner" style="margin-top:12px"><div class="winner-title">${w===currentUser.uid?'🏆 You win!':(w==='tie'?'🤝 Tie game!':`💀 ${activeMatchOpponentName||'Opp'} wins`)}</div></div>`;
+  }
+  el.innerHTML = html;
+}
+
+// ─── OVERRIDE initHome to require auth ────────────────────
+const _baseInitHome = initHome;
+initHome = function() {
+  if (!currentUser) return;
+  _baseInitHome();
+};
+
+// ─── KEYBOARD: route to match or solo ────────────────────
+// The original keydown listener only fires for #game-screen.
+// We add one for #match-game-screen.
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('match-game-screen').classList.contains('active')) return;
+  if (e.key==='Enter') handleMatchKey('ENTER');
+  else if (e.key==='Backspace') handleMatchKey('⌫');
+  else if (/^[a-zA-Z]$/.test(e.key)) handleMatchKey(e.key.toUpperCase());
+});
+
 </script>
 </body>
 </html>
