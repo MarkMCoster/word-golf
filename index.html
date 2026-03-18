@@ -1330,12 +1330,23 @@ async function updateFriendRequestBadge() {
   } catch(e) {}
 }
 async function searchFriends() {
-  const q = document.getElementById('friend-search-input').value.trim();
-  if (!q) { toast('Enter a name to search'); return; }
+  const raw = document.getElementById('friend-search-input').value.trim();
+  if (!raw) { toast('Enter a name to search'); return; }
+  // Normalize query: capitalize first letter of each word to match stored display names
+  const q = raw.replace(/\w/g, c => c.toUpperCase());
+  const qLower = raw.toLowerCase();
   const res = document.getElementById('friend-search-results');
   res.innerHTML = '<div style="color:var(--gray-mid);font-size:12px;padding:8px 0">Searching…</div>';
   try {
-    const snap = await db.collection('users').where('displayName','>=',q).where('displayName','<=',q+'').limit(10).get();
+    // Run two queries: one with auto-capitalized form, one with original input
+    const [snapA, snapB] = await Promise.all([
+      db.collection('users').where('displayName','>=',q).where('displayName','<=',q+'').limit(10).get(),
+      db.collection('users').where('displayName','>=',raw).where('displayName','<=',raw+'').limit(10).get()
+    ]);
+    // Merge and deduplicate results
+    const seen = new Set(); const docs = [];
+    [...snapA.docs, ...snapB.docs].forEach(d => { if (!seen.has(d.id)) { seen.add(d.id); docs.push(d); } });
+    const snap = { empty: docs.length === 0, forEach: cb => docs.forEach(cb) };
     if (snap.empty) { res.innerHTML = '<div style="color:var(--gray-mid);font-size:12px;padding:8px 0">No players found.</div>'; return; }
     res.innerHTML = '';
     snap.forEach(doc => {
