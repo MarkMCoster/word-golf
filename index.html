@@ -165,7 +165,7 @@ body{
 @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
 .tile.bounce{animation:bounceUp .6s ease}
 @keyframes bounceUp{0%{transform:translateY(0)}30%{transform:translateY(-18px)}60%{transform:translateY(-6px)}80%{transform:translateY(-3px)}100%{transform:translateY(0)}}
-.keyboard{width:100%;max-width:500px;padding:6px 6px 12px;margin:0 auto}
+.keyboard{width:100%;max-width:500px;padding:6px 6px calc(var(--nav-h) + 14px);margin:0 auto}
 .kb-row{display:flex;justify-content:center;gap:4px;margin-bottom:4px}
 .key{height:50px;min-width:28px;flex:1;max-width:40px;border-radius:5px;border:1px solid rgba(201,168,76,.15);background:rgba(255,255,255,.08);color:var(--cream);font-family:'Courier Prime',monospace;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;user-select:none;-webkit-user-select:none;-webkit-appearance:none}
 .key:active{transform:scale(.92);filter:brightness(1.3)}
