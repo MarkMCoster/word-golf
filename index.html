@@ -744,7 +744,7 @@ function scoreInfo(s){
   if(s===4)return{label:'Par',icon:'✅',color:'#52b788',vspar:0};
   if(s===5)return{label:'Bogey',icon:'🔴',color:'#e06060',vspar:1};
   if(s===6)return{label:'Double Bogey',icon:'🟥',color:'#cc2020',vspar:2};
-  if(s===7)return{label:'Failed',icon:'💀',color:'#aa0000',vspar:3};
+  if(s===7)return{label:'Triple Bogey',icon:'💀',color:'#aa0000',vspar:3};
   return{label:'Triple Bogey',icon:'💀',color:'#aa0000',vspar:3};
 }
 function totalVP(scores){return scores.reduce((a,s)=>a+scoreInfo(s).vspar,0)}
@@ -953,11 +953,7 @@ function showFinal(){
 }
 function copyShareText(){
   const vp=totalVP(G.scores);
-  const lines=G.scores.map((s,i)=>{
-    const info=scoreInfo(s);
-    const label=s===7?'Failed ❌':`${info.label} ${info.icon}`;
-    return `Hole ${i+1}: ${label}`;
-  });
+  const lines=G.scores.map((s,i)=>`Hole ${i+1}: ${scoreInfo(s).label} ${scoreInfo(s).icon}`);
   const code=G.isCustom&&G.customCode?`Play this course: ${G.customCode}`:!G.isPractice?`Play this course: ${G.courseId}`:'(Practice Round)';
   const txt=`⛳ Word Golf — ${G.courseName}\n${lines.slice(0,9).join('  ')}\n${lines.slice(9).join('  ')}\nFinal Score: ${fmtVP(vp)}\n${code}`;
   navigator.clipboard.writeText(txt).then(()=>toast('Copied to clipboard!')).catch(()=>toast('Copy failed — try long-pressing'));
