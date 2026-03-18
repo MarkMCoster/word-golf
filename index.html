@@ -617,6 +617,20 @@ body{
 
 <script>
 // ═══════════════════════════
+//  DOUBLE-TAP ZOOM PREVENTION
+// ═══════════════════════════
+(function preventDoubleTapZoom() {
+  let lastTap = 0;
+  document.addEventListener('touchend', function(e) {
+    const now = Date.now();
+    if (now - lastTap < 300) {
+      e.preventDefault();
+    }
+    lastTap = now;
+  }, { passive: false });
+})();
+
+// ═══════════════════════════
 //  PWA SETUP
 // ═══════════════════════════
 (function injectManifest(){
