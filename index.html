@@ -26,34 +26,41 @@
 ║          Start in production mode, pick a region                 ║
 ║          Rules tab → paste and Publish:                          ║
 ║                                                                  ║
-║   rules_version = '2';                                           ║
-║   service cloud.firestore {                                      ║
-║     match /databases/{db}/documents {                            ║
-║       match /users/{uid} {                                       ║
-║         allow read: if request.auth != null;                     ║
-║         // Own profile: full write access                        ║
-║         allow write: if request.auth.uid == uid;                 ║
-║         // Friend requests: any signed-in user can add their     ║
-║         // own UID to another user's friendRequests array        ║
-║         allow update: if request.auth != null                    ║
-║           && request.resource.data.diff(resource.data)           ║
-║              .affectedKeys().hasOnly(['friendRequests'])          ║
-║           && request.resource.data.friendRequests                ║
-║              .hasAll(resource.data.friendRequests)               ║
-║           && request.resource.data.friendRequests.size() ==      ║
-║              resource.data.friendRequests.size() + 1;            ║
-║       }                                                          ║
-║       match /matches/{mid} {                                     ║
-║         allow read, write: if request.auth != null               ║
-║           && (resource == null                                    ║
-║           || request.auth.uid == resource.data.player1           ║
-║           || request.auth.uid == resource.data.player2);         ║
-║       }                                                          ║
-║     }                                                            ║
-║   }                                                              ║
-║                                                                  ║
-║  STEP 4  Paste your firebaseConfig in the JS block below         ║
-║                                                                  ║
+║   rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    // Users collection
+    match /users/{uid} {
+      // Anyone signed in can read ONLY the displayName field (for search/friend names)
+      allow get: if request.auth != null;
+      // Only the owner can read their full profile or write to it
+      allow read, write: if request.auth.uid == uid;
+    }
+
+    // Friend requests — separate collection, no cross-user doc writes needed
+    match /friendRequests/{reqId} {
+      // Read: only sender or recipient
+      allow read: if request.auth != null
+        && (request.auth.uid == resource.data.from
+        ||  request.auth.uid == resource.data.to);
+      // Create: only if you are the sender
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.from;
+      // Update status: only the recipient can accept/decline
+      allow update: if request.auth != null
+        && request.auth.uid == resource.data.to;
+    }
+
+    // Matches
+    match /matches/{mid} {
+      allow read, write: if request.auth != null
+        && (resource == null
+        ||  request.auth.uid == resource.data.player1
+        ||  request.auth.uid == resource.data.player2);
+    }
+  }
+}
 ║  STEP 5  Push index.html to GitHub → Settings → Pages → main     ║
 ║          Add your Pages URL to Firebase Auth Authorized Domains   ║
 ╚══════════════════════════════════════════════════════════════════╝
@@ -1187,7 +1194,7 @@ async function ensureUserDoc(user) {
     if (!currentUserDoc) {
       currentUserDoc = {
         displayName: user.displayName || user.email.split('@')[0],
-        email: user.email, friends: [], friendRequests: []
+        email: user.email, friends: []
       };
     }
   }
@@ -1249,7 +1256,7 @@ async function doRegister() {
     // Pre-populate currentUserDoc so onAuthStateChanged skips the Firestore create
     // (ensureUserDoc checks snap.exists, but the write below races with it — 
     //  setting currentUserDoc here ensures the race is harmless)
-    currentUserDoc = { displayName: name, email, friends: [], friendRequests: [] };
+    currentUserDoc = { displayName: name, email, friends: [] };
     // Write user document — wrapped separately so auth errors vs Firestore errors are distinct
     try {
       await db.collection('users').doc(cred.user.uid).set(currentUserDoc);
@@ -1308,10 +1315,17 @@ function navTo(tab) {
 function goHome() { navTo('play'); }
 
 // ─── FRIENDS ──────────────────────────────────────────────
-function updateFriendRequestBadge() {
-  const reqs = currentUserDoc?.friendRequests || [];
-  const b = document.getElementById('friends-badge');
-  if (reqs.length > 0) { b.textContent = reqs.length; b.style.display = 'block'; } else b.style.display = 'none';
+async function updateFriendRequestBadge() {
+  if (!currentUser) return;
+  try {
+    const snap = await db.collection('friendRequests')
+      .where('to', '==', currentUser.uid)
+      .where('status', '==', 'pending')
+      .get();
+    const b = document.getElementById('friends-badge');
+    if (!snap.empty) { b.textContent = snap.size; b.style.display = 'block'; }
+    else b.style.display = 'none';
+  } catch(e) {}
 }
 async function searchFriends() {
   const q = document.getElementById('friend-search-input').value.trim();
@@ -1339,53 +1353,131 @@ async function searchFriends() {
 }
 async function sendFriendRequest(toUid, toName) {
   try {
-    await db.collection('users').doc(toUid).update({ friendRequests: firebase.firestore.FieldValue.arrayUnion(currentUser.uid) });
-    toast(`Friend request sent to ${toName}!`);
+    // Check for existing pending request
+    const existing = await db.collection('friendRequests')
+      .where('from', '==', currentUser.uid)
+      .where('to', '==', toUid)
+      .where('status', '==', 'pending')
+      .limit(1).get();
+    if (!existing.empty) { toast('Request already sent'); return; }
+    // Write request doc — sender only writes docs where from == their own uid
+    await db.collection('friendRequests').add({
+      from: currentUser.uid,
+      fromName: currentUserDoc?.displayName || currentUser.email,
+      to: toUid,
+      status: 'pending',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    toast(`Friend request sent to ${toName}! 🤝`);
     document.getElementById('friend-search-results').innerHTML = '';
     document.getElementById('friend-search-input').value = '';
-  } catch(e) { toast('Could not send request'); }
+  } catch(e) {
+    console.error('sendFriendRequest error:', e);
+    toast('Could not send request — check Firestore rules');
+  }
 }
-async function acceptFriendRequest(fromUid) {
-  const batch = db.batch();
-  batch.update(db.collection('users').doc(currentUser.uid), { friends: firebase.firestore.FieldValue.arrayUnion(fromUid), friendRequests: firebase.firestore.FieldValue.arrayRemove(fromUid) });
-  batch.update(db.collection('users').doc(fromUid), { friends: firebase.firestore.FieldValue.arrayUnion(currentUser.uid) });
-  await batch.commit(); toast('Friend added! 🤝');
+async function acceptFriendRequest(fromUid, requestId) {
+  try {
+    // Mark request as accepted
+    await db.collection('friendRequests').doc(requestId).update({ status: 'accepted' });
+    // Each user only writes to their OWN friends array
+    await db.collection('users').doc(currentUser.uid).update({
+      friends: firebase.firestore.FieldValue.arrayUnion(fromUid)
+    });
+    // Write a reverse accepted request so the sender can also update their own friends list
+    await db.collection('friendRequests').add({
+      from: currentUser.uid,
+      to: fromUid,
+      status: 'accepted_notify',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    toast('Friend added! 🤝');
+    refreshFriendsScreen();
+  } catch(e) {
+    console.error('acceptFriendRequest error:', e);
+    toast('Could not accept request — check Firestore rules');
+  }
 }
-async function declineFriendRequest(fromUid) {
-  await db.collection('users').doc(currentUser.uid).update({ friendRequests: firebase.firestore.FieldValue.arrayRemove(fromUid) });
+async function declineFriendRequest(fromUid, requestId) {
+  try {
+    await db.collection('friendRequests').doc(requestId).update({ status: 'declined' });
+    refreshFriendsScreen();
+  } catch(e) { toast('Could not decline request'); }
 }
 async function refreshFriendsScreen() {
-  if (!currentUserDoc) return;
-  const reqs = currentUserDoc.friendRequests || [];
-  const reqSec = document.getElementById('friend-requests-section');
+  if (!currentUser) return;
+
+  // ── Incoming pending friend requests ──────────────────────────────────
+  const reqSec  = document.getElementById('friend-requests-section');
   const reqList = document.getElementById('friend-requests-list');
-  if (reqs.length > 0) {
-    reqSec.style.display = 'block'; reqList.innerHTML = '';
-    for (const uid of reqs) {
-      try {
-        const snap = await db.collection('users').doc(uid).get();
-        const name = snap.exists ? snap.data().displayName : uid;
+  try {
+    const reqSnap = await db.collection('friendRequests')
+      .where('to', '==', currentUser.uid)
+      .where('status', '==', 'pending')
+      .get();
+    if (!reqSnap.empty) {
+      reqSec.style.display = 'block'; reqList.innerHTML = '';
+      reqSnap.forEach(doc => {
+        const data = doc.data();
+        const name = data.fromName || data.from;
         const card = document.createElement('div'); card.className = 'request-card';
-        card.innerHTML = `<div class="friend-avatar">${name[0].toUpperCase()}</div>
+        card.innerHTML = `<div class="friend-avatar">${(name[0]||'?').toUpperCase()}</div>
           <div class="request-name">${name}</div>
           <div style="display:flex;gap:7px">
-            <button class="btn btn-sm" onclick="acceptFriendRequest('${uid}')">Accept</button>
-            <button class="btn btn-secondary btn-sm" onclick="declineFriendRequest('${uid}')">Decline</button>
+            <button class="btn btn-sm" onclick="acceptFriendRequest('${data.from}','${doc.id}')">Accept</button>
+            <button class="btn btn-secondary btn-sm" onclick="declineFriendRequest('${data.from}','${doc.id}')">Decline</button>
           </div>`;
         reqList.appendChild(card);
-      } catch(e) {}
+      });
+      // Update badge
+      const badge = document.getElementById('friends-badge');
+      badge.textContent = reqSnap.size; badge.style.display = 'block';
+    } else {
+      reqSec.style.display = 'none';
+      document.getElementById('friends-badge').style.display = 'none';
     }
-  } else reqSec.style.display = 'none';
-  const friends = currentUserDoc.friends || [];
+  } catch(e) { console.error('Loading friend requests failed:', e); }
+
+  // ── Check for accepted_notify — add sender to OUR friends list ─────────
+  try {
+    const notifySnap = await db.collection('friendRequests')
+      .where('to', '==', currentUser.uid)
+      .where('status', '==', 'accepted_notify')
+      .get();
+    for (const doc of notifySnap.docs) {
+      const data = doc.data();
+      // Add them to our friends array if not already there
+      if (!(currentUserDoc?.friends || []).includes(data.from)) {
+        await db.collection('users').doc(currentUser.uid).update({
+          friends: firebase.firestore.FieldValue.arrayUnion(data.from)
+        });
+      }
+      // Mark as processed
+      await doc.ref.update({ status: 'processed' });
+    }
+  } catch(e) { console.error('Processing accept notifications failed:', e); }
+
+  // ── Friends list ───────────────────────────────────────────────────────
   const fl = document.getElementById('friends-list');
-  if (!friends.length) { fl.innerHTML = '<div class="empty-state" style="padding:14px 0"><span class="empty-state-icon">🤝</span><div class="empty-state-text">No friends yet</div><div class="empty-state-sub">Search above to add players</div></div>'; return; }
+  // Re-fetch our own doc to get latest friends array
+  try {
+    const mySnap = await db.collection('users').doc(currentUser.uid).get();
+    if (mySnap.exists) currentUserDoc = mySnap.data();
+  } catch(e) {}
+
+  const friends = currentUserDoc?.friends || [];
+  if (!friends.length) {
+    fl.innerHTML = '<div class="empty-state" style="padding:14px 0"><span class="empty-state-icon">🤝</span><div class="empty-state-text">No friends yet</div><div class="empty-state-sub">Search above to add players</div></div>';
+    return;
+  }
   fl.innerHTML = '';
   for (const uid of friends) {
     try {
+      // Only fetch displayName — do not expose private fields
       const snap = await db.collection('users').doc(uid).get();
-      const name = snap.exists ? snap.data().displayName : uid;
+      const name = snap.exists ? (snap.data().displayName || uid) : uid;
       const card = document.createElement('div'); card.className = 'friend-card';
-      card.innerHTML = `<div class="friend-avatar">${name[0].toUpperCase()}</div>
+      card.innerHTML = `<div class="friend-avatar">${(name[0]||'?').toUpperCase()}</div>
         <div class="friend-name">${name}</div>
         <button class="btn btn-sm" onclick="openNewMatchModalWith('${uid}','${name}')">⛳ Match</button>`;
       fl.appendChild(card);
