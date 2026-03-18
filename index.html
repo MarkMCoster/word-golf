@@ -757,7 +757,6 @@ function startHole(){
 function updateHeader(){
   const h=G.currentHole+1;
   document.getElementById('hole-number-display').textContent=`Hole ${h} of 18 · Par 4`;
-  document.getElementById('hole-flavor-text').textContent=G.flavors?G.flavors[G.currentHole]||'':'';
   document.getElementById('running-score-badge').textContent=fmtVP(totalVP(G.scores));
   document.getElementById('sc-course-name').textContent=G.courseName;
 }
