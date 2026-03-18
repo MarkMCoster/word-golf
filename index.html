@@ -1332,25 +1332,23 @@ async function updateFriendRequestBadge() {
 async function searchFriends() {
   const raw = document.getElementById('friend-search-input').value.trim();
   if (!raw) { toast('Enter a name to search'); return; }
-  // Normalize query: capitalize first letter of each word to match stored display names
-  const q = raw.replace(/\w/g, c => c.toUpperCase());
-  const qLower = raw.toLowerCase();
+  const q = raw.toLowerCase();
   const res = document.getElementById('friend-search-results');
   res.innerHTML = '<div style="color:var(--gray-mid);font-size:12px;padding:8px 0">Searching…</div>';
   try {
-    // Run two queries: one with auto-capitalized form, one with original input
-    const [snapA, snapB] = await Promise.all([
-      db.collection('users').where('displayName','>=',q).where('displayName','<=',q+'').limit(10).get(),
-      db.collection('users').where('displayName','>=',raw).where('displayName','<=',raw+'').limit(10).get()
-    ]);
-    // Merge and deduplicate results
-    const seen = new Set(); const docs = [];
-    [...snapA.docs, ...snapB.docs].forEach(d => { if (!seen.has(d.id)) { seen.add(d.id); docs.push(d); } });
-    const snap = { empty: docs.length === 0, forEach: cb => docs.forEach(cb) };
-    if (snap.empty) { res.innerHTML = '<div style="color:var(--gray-mid);font-size:12px;padding:8px 0">No players found.</div>'; return; }
+    // Fetch all users and filter client-side (case-insensitive substring match)
+    const snap = await db.collection('users').limit(200).get();
+    const matches = snap.docs.filter(doc => {
+      if (doc.id === currentUser.uid) return false;
+      const name = (doc.data().displayName || '').toLowerCase();
+      return name.includes(q);
+    });
+    if (matches.length === 0) {
+      res.innerHTML = '<div style="color:var(--gray-mid);font-size:12px;padding:8px 0">No players found.</div>';
+      return;
+    }
     res.innerHTML = '';
-    snap.forEach(doc => {
-      if (doc.id === currentUser.uid) return;
+    matches.forEach(doc => {
       const data = doc.data();
       const isFriend = (currentUserDoc?.friends || []).includes(doc.id);
       const requested = (data.friendRequests || []).includes(currentUser.uid);
@@ -1362,7 +1360,10 @@ async function searchFriends() {
           : `<button class="btn btn-sm" onclick="sendFriendRequest('${doc.id}','${data.displayName}')">Add</button>`}`;
       res.appendChild(card);
     });
-  } catch(e) { res.innerHTML = '<div style="color:#e06060;font-size:12px;padding:8px 0">Search failed.</div>'; }
+  } catch(e) {
+    console.error('Friend search error:', e);
+    res.innerHTML = '<div style="color:#e06060;font-size:12px;padding:8px 0">Search error: ' + e.message + '</div>';
+  }
 }
 async function sendFriendRequest(toUid, toName) {
   try {
