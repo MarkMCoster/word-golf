@@ -26,49 +26,1197 @@
 ║          Start in production mode, pick a region                 ║
 ║          Rules tab → paste and Publish:                          ║
 ║                                                                  ║
-║   rules_version = '2';
-service cloud.firestore {
-  match /databases/{db}/documents {
+║   rules_version = '2';                                           ║
+║   service cloud.firestore {                                      ║
+║     match /databases/{db}/documents {                            ║
+║       match /users/{uid} {                                       ║
+║         allow read: if request.auth != null;                     ║
+║         allow write: if request.auth.uid == uid;                 ║
+║         allow update: if request.auth != null                    ║
+║           && request.resource.data.diff(resource.data)           ║
+║              .affectedKeys().hasOnly(['friends'])                 ║
+║           && request.resource.data.friends                       ║
+║              .hasAll(resource.data.friends)                      ║
+║           && request.resource.data.friends.size() ==             ║
+║              resource.data.friends.size() + 1;                   ║
+║       }                                                          ║
+║       match /friendRequests/{reqId} {                            ║
+║         allow read: if request.auth != null                      ║
+║           && (request.auth.uid == resource.data.from             ║
+║           ||  request.auth.uid == resource.data.to);             ║
+║         allow create: if request.auth != null                    ║
+║           && request.auth.uid == request.resource.data.from;     ║
+║         allow update: if request.auth != null                    ║
+║           && request.auth.uid == resource.data.to;               ║
+║       }                                                          ║
+║       match /matches/{mid} {                                     ║
+║         allow read, write: if request.auth != null               ║
+║           && (resource == null                                    ║
+║           || request.auth.uid == resource.data.player1           ║
+║           || request.auth.uid == resource.data.player2);         ║
+║       }                                                          ║
+║     }                                                            ║
+║   }                                                              ║
+║                                                                  ║
+║  STEP 5  Push index.html to GitHub → Settings → Pages → main     ║
+║          Add your Pages URL to Firebase Auth Authorized Domains   ║
+╚══════════════════════════════════════════════════════════════════╝
+-->
+<!-- Firebase SDK via CDN — no npm or build step needed -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --green-deep:#1a3a2a; --green-felt:#1e4d35; --green-mid:#2d6a4f; --green-light:#52b788;
+  --cream:#f5f0e8; --ivory:#faf7f0; --gold:#c9a84c; --gold-light:#e8c96d; --gold-pale:#f7eac0;
+  --brown:#7c5c3a; --gray-light:#d4cfc6; --gray-mid:#8a8278; --gray-dark:#4a4540;
+  --correct:#4a7c59; --present:#c9a84c; --absent:#4a4540;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overscroll-behavior:none}
+body{
+  font-family:'Libre Baskerville',Georgia,serif;
+  background-color:var(--green-deep);
+  background-image:
+    radial-gradient(ellipse at 20% 50%,rgba(46,106,79,.3) 0%,transparent 60%),
+    radial-gradient(ellipse at 80% 20%,rgba(201,168,76,.08) 0%,transparent 50%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+  min-height:100vh;min-height:100dvh;color:var(--cream);overflow-x:hidden
+}
+.screen{display:none;min-height:100vh;min-height:100dvh}
+.screen.active{display:flex;flex-direction:column;align-items:center}
+.section-label{font-family:'Courier Prime',monospace;font-size:11px;letter-spacing:4px;text-transform:uppercase;color:var(--gold);margin-bottom:12px;padding-left:2px}
+.divider{width:120px;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:16px auto}
+.btn{background:linear-gradient(135deg,var(--gold) 0%,var(--brown) 100%);color:var(--cream);border:none;border-radius:6px;padding:12px 20px;font-family:'Playfair Display',serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s ease;letter-spacing:.5px;white-space:nowrap;-webkit-appearance:none}
+.btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(201,168,76,.3);filter:brightness(1.1)}
+.btn:active{transform:translateY(0);filter:brightness(.95)}
+.btn-secondary{background:rgba(255,255,255,.06);border:1px solid rgba(201,168,76,.3);color:var(--gold-light)}
+.btn-secondary:hover{background:rgba(201,168,76,.1);box-shadow:none}
+.text-under{font-size:11px;color:var(--gray-mid);text-align:center;margin-top:8px;font-style:italic}
 
-    // Users collection
-    match /users/{uid} {
-      // Any signed-in user can read another user's document (needed for name lookup)
-      // In practice only displayName is used from other users' docs
-      allow read: if request.auth != null;
-      // Only the owner can write their own doc — EXCEPT:
-      // A friend acceptance is allowed to add the acceptor's uid to the
-      // acceptee's friends array (and only that field, one item at a time)
-      allow write: if request.auth.uid == uid;
-      allow update: if request.auth != null
-        && request.resource.data.diff(resource.data)
-             .affectedKeys().hasOnly(['friends'])
-        && request.resource.data.friends.hasAll(resource.data.friends)
-        && request.resource.data.friends.size()
-             == resource.data.friends.size() + 1;
+/* HOME */
+#home-screen{justify-content:flex-start;padding:36px 20px 48px}
+.home-header{text-align:center;margin-bottom:32px}
+.flag-icon{font-size:48px;display:block;margin-bottom:12px;filter:drop-shadow(0 4px 12px rgba(201,168,76,.4));animation:flagWave 3s ease-in-out infinite}
+@keyframes flagWave{0%,100%{transform:rotate(-5deg)}50%{transform:rotate(5deg)}}
+.game-title{font-family:'Playfair Display',serif;font-size:clamp(34px,8vw,52px);font-weight:900;color:var(--gold-light);letter-spacing:2px;text-shadow:0 2px 20px rgba(201,168,76,.3);line-height:1}
+.game-subtitle{font-family:'Libre Baskerville',serif;font-style:italic;color:var(--gray-light);font-size:13px;letter-spacing:3px;margin-top:8px;text-transform:uppercase}
+.home-section{width:100%;max-width:420px;margin-bottom:22px}
+.course-card{background:linear-gradient(135deg,rgba(255,255,255,.05) 0%,rgba(255,255,255,.02) 100%);border:1px solid rgba(201,168,76,.2);border-radius:8px;padding:14px 20px;cursor:pointer;transition:all .2s ease;margin-bottom:10px;position:relative;overflow:hidden}
+.course-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:0;transition:opacity .2s}
+.course-card:hover{border-color:rgba(201,168,76,.5);transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.course-card:hover::before{opacity:1}
+.course-card:active{transform:translateY(0)}
+.course-name{font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--cream)}
+.course-meta{font-size:12px;color:var(--gray-mid);margin-top:3px;font-style:italic}
+.course-arrow{position:absolute;right:20px;top:50%;transform:translateY(-50%);color:var(--gold);font-size:18px;opacity:.6}
+.code-input-row{display:flex;gap:10px}
+.code-input{flex:1;background:rgba(255,255,255,.05);border:1px solid rgba(201,168,76,.3);border-radius:6px;padding:12px 16px;color:var(--cream);font-family:'Courier Prime',monospace;font-size:13px;letter-spacing:1px;text-transform:uppercase;outline:none;transition:border-color .2s;-webkit-appearance:none}
+.code-input::placeholder{color:var(--gray-mid);font-size:11px}
+.code-input:focus{border-color:var(--gold)}
+.resume-card{background:linear-gradient(135deg,rgba(74,124,89,.2),rgba(30,77,53,.3));border:1px solid rgba(82,183,136,.3);border-radius:8px;padding:14px 20px;cursor:pointer;transition:all .2s ease;display:flex;align-items:center;gap:14px}
+.resume-card:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.resume-icon{font-size:26px;flex-shrink:0}
+.resume-text-main{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--cream)}
+.resume-text-sub{font-size:11px;color:var(--green-light);margin-top:2px}
+
+/* BUILDER */
+#builder-screen{justify-content:flex-start;padding:0}
+.builder-header{width:100%;background:linear-gradient(180deg,rgba(10,25,18,.97) 0%,rgba(26,58,42,.8) 100%);border-bottom:1px solid rgba(201,168,76,.2);padding:14px 16px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:50;backdrop-filter:blur(10px)}
+.builder-back-btn{background:none;border:1px solid rgba(201,168,76,.3);color:var(--gold);border-radius:6px;padding:6px 12px;font-family:'Courier Prime',monospace;font-size:12px;cursor:pointer;letter-spacing:1px}
+.builder-title{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--gold-light);flex:1}
+.builder-body{width:100%;max-width:460px;padding:20px 20px 60px}
+.builder-name-row{display:flex;flex-direction:column;gap:8px;margin-bottom:20px}
+.builder-label{font-family:'Courier Prime',monospace;font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--gold)}
+.builder-name-input{background:rgba(255,255,255,.06);border:1px solid rgba(201,168,76,.3);border-radius:6px;padding:11px 14px;color:var(--cream);font-family:'Playfair Display',serif;font-size:16px;outline:none;transition:border-color .2s;-webkit-appearance:none;width:100%}
+.builder-name-input:focus{border-color:var(--gold)}
+.builder-name-input::placeholder{color:var(--gray-mid);font-style:italic}
+.hole-builder-grid{display:flex;flex-direction:column;gap:7px;margin-bottom:20px}
+.hole-builder-row{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:8px 12px}
+.hole-num-label{font-family:'Courier Prime',monospace;font-size:11px;color:var(--gray-mid);letter-spacing:1px;min-width:36px}
+.hole-word-input{flex:1;background:transparent;border:none;border-bottom:1px solid rgba(201,168,76,.2);color:var(--cream);font-family:'Playfair Display',serif;font-size:16px;font-weight:700;letter-spacing:5px;text-transform:uppercase;outline:none;padding:4px 2px;transition:border-color .2s;-webkit-appearance:none;text-align:center;width:100%}
+.hole-word-input:focus{border-bottom-color:var(--gold)}
+.hole-word-input::placeholder{letter-spacing:2px;font-size:12px;color:rgba(201,168,76,.3);font-weight:400}
+.hole-word-status{font-size:15px;min-width:20px;text-align:center}
+.builder-progress{font-family:'Courier Prime',monospace;font-size:12px;color:var(--gray-mid);text-align:center;margin-bottom:14px;letter-spacing:1px}
+.builder-progress span{color:var(--gold-light);font-weight:700}
+.builder-actions{display:flex;flex-direction:column;gap:10px}
+.fill-random-btn{background:rgba(82,183,136,.12);border:1px solid rgba(82,183,136,.3);color:var(--green-light)}
+.fill-random-btn:hover{background:rgba(82,183,136,.2);box-shadow:none}
+
+/* GAME */
+#game-screen{padding:0;justify-content:flex-start;position:relative}
+.game-header{width:100%;background:linear-gradient(180deg,rgba(10,25,18,.97) 0%,rgba(26,58,42,.75) 100%);border-bottom:1px solid rgba(201,168,76,.2);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;backdrop-filter:blur(10px);position:sticky;top:0;z-index:100}
+.hole-info{text-align:center;flex:1}
+.hole-number{font-family:'Playfair Display',serif;font-size:13px;color:var(--gold-light);letter-spacing:2px;text-transform:uppercase}
+.hole-flavor{font-size:10px;color:var(--gray-mid);font-style:italic;margin-top:1px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.score-badge{font-family:'Courier Prime',monospace;font-size:13px;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);border-radius:20px;padding:4px 12px;color:var(--gold-light);cursor:pointer;white-space:nowrap}
+.scorecard-toggle-btn{background:none;border:none;color:var(--gold);font-size:20px;cursor:pointer;padding:4px}
+.grid-container{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px 16px;width:100%;max-width:380px;margin:0 auto}
+.grid{display:grid;grid-template-rows:repeat(6,1fr);gap:5px;width:100%;max-width:300px;margin:0 auto}
+.grid-row{display:grid;grid-template-columns:repeat(5,1fr);gap:5px}
+.tile{aspect-ratio:1;border:2px solid rgba(201,168,76,.2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:clamp(18px,5.5vw,26px);font-weight:700;color:var(--cream);background:rgba(255,255,255,.03);transition:border-color .1s;user-select:none}
+.tile.filled{border-color:rgba(201,168,76,.5);animation:pop .1s ease}
+@keyframes pop{0%{transform:scale(1)}50%{transform:scale(1.12)}100%{transform:scale(1.04)}}
+.tile.flipping{animation:flip .5s ease forwards}
+@keyframes flip{0%{transform:rotateX(0deg)}50%{transform:rotateX(-90deg);background:var(--green-deep)}100%{transform:rotateX(0deg)}}
+.tile[data-state="correct"]{background:var(--correct);border-color:var(--correct);color:white}
+.tile[data-state="present"]{background:var(--present);border-color:var(--present);color:white}
+.tile[data-state="absent"]{background:var(--absent);border-color:var(--absent);color:var(--gray-light)}
+.tile.shake{animation:shake .5s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+.tile.bounce{animation:bounceUp .6s ease}
+@keyframes bounceUp{0%{transform:translateY(0)}30%{transform:translateY(-18px)}60%{transform:translateY(-6px)}80%{transform:translateY(-3px)}100%{transform:translateY(0)}}
+.keyboard{width:100%;max-width:500px;padding:6px 6px calc(var(--nav-h) + 16px);margin:0 auto}
+.kb-row{display:flex;justify-content:center;gap:4px;margin-bottom:4px}
+.key{height:50px;min-width:28px;flex:1;max-width:40px;border-radius:5px;border:1px solid rgba(201,168,76,.15);background:rgba(255,255,255,.08);color:var(--cream);font-family:'Courier Prime',monospace;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;user-select:none;-webkit-user-select:none;-webkit-appearance:none}
+.key:active{transform:scale(.92);filter:brightness(1.3)}
+.key.wide{min-width:48px;max-width:56px;font-size:10px;letter-spacing:.5px}
+.key[data-state="correct"]{background:var(--correct);border-color:var(--correct);color:white}
+.key[data-state="present"]{background:var(--present);border-color:var(--present);color:white}
+.key[data-state="absent"]{background:var(--absent);border-color:var(--absent);color:var(--gray-mid)}
+
+/* TOAST */
+.toast-container{position:fixed;top:76px;left:50%;transform:translateX(-50%);z-index:600;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:8px}
+.toast{background:var(--cream);color:var(--green-deep);font-family:'Courier Prime',monospace;font-weight:700;font-size:13px;letter-spacing:1px;padding:10px 20px;border-radius:6px;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.4);animation:toastIn .3s ease,toastOut .3s ease 1.7s forwards}
+@keyframes toastIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toastOut{from{opacity:1}to{opacity:0}}
+
+/* HOLE RESULT */
+.hole-result-overlay{position:fixed;inset:0;background:rgba(10,22,16,.88);backdrop-filter:blur(8px);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .3s ease}
+.hole-result-overlay.visible{opacity:1;pointer-events:all}
+.result-card{background:linear-gradient(160deg,var(--green-felt) 0%,var(--green-deep) 100%);border:1px solid rgba(201,168,76,.35);border-radius:16px;padding:28px 24px;text-align:center;max-width:310px;width:100%;box-shadow:0 24px 80px rgba(0,0,0,.6);transform:translateY(20px);transition:transform .3s ease}
+.hole-result-overlay.visible .result-card{transform:translateY(0)}
+.result-icon{font-size:50px;display:block;margin-bottom:8px;animation:resultPop .4s ease .2s both}
+@keyframes resultPop{0%{transform:scale(.5);opacity:0}70%{transform:scale(1.2)}100%{transform:scale(1);opacity:1}}
+.result-label{font-family:'Playfair Display',serif;font-size:30px;font-weight:900;letter-spacing:1px;margin-bottom:4px}
+.result-score-text{font-family:'Courier Prime',monospace;font-size:13px;color:var(--gray-mid);letter-spacing:2px;margin-bottom:16px}
+.result-word{font-family:'Playfair Display',serif;font-size:26px;font-weight:700;letter-spacing:8px;color:var(--cream);background:rgba(255,255,255,.05);border-radius:8px;padding:10px 16px;margin-bottom:20px;border:1px solid rgba(201,168,76,.2)}
+.result-next-btn{width:100%;padding:13px;font-size:15px;border-radius:8px}
+
+/* SCORECARD */
+.scorecard-panel{position:fixed;inset:0;background:rgba(10,22,16,.93);backdrop-filter:blur(10px);z-index:300;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;opacity:0;pointer-events:none;transition:opacity .3s ease}
+.scorecard-panel.visible{opacity:1;pointer-events:all}
+.scorecard-inner{width:100%;max-width:600px}
+.scorecard-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+.scorecard-title{font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:var(--gold-light)}
+.scorecard-close{background:none;border:1px solid rgba(201,168,76,.3);color:var(--gold);border-radius:50%;width:32px;height:32px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.scorecard-table{width:100%;border-collapse:collapse;font-family:'Courier Prime',monospace;font-size:11px;background:rgba(10,25,18,.7);border-radius:8px;overflow:hidden;border:1px solid rgba(201,168,76,.2);margin-bottom:10px}
+.scorecard-table th{background:rgba(201,168,76,.12);color:var(--gold);font-weight:700;padding:7px 4px;text-align:center;letter-spacing:1px;font-size:10px;border-bottom:1px solid rgba(201,168,76,.2)}
+.scorecard-table td{padding:6px 4px;text-align:center;border-right:1px solid rgba(255,255,255,.05);font-size:12px}
+.scorecard-table tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+.score-cell-eagle{color:var(--gold-light);font-weight:700}
+.score-cell-birdie{color:var(--gold);font-weight:700}
+.score-cell-par{color:var(--green-light)}
+.score-cell-bogey{color:#e06060}
+.score-cell-double{color:#e04040;font-weight:700}
+.score-cell-triple{color:#cc2020;font-weight:700}
+.score-cell-pending{color:rgba(255,255,255,.15)}
+.total-vs-par{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;text-align:center;margin-top:10px;color:var(--gold-light);padding:12px;border:1px solid rgba(201,168,76,.3);border-radius:8px;background:rgba(201,168,76,.06)}
+
+/* FINAL */
+#final-screen{padding:24px 20px;justify-content:flex-start}
+.final-header{text-align:center;margin-bottom:24px;width:100%;max-width:500px}
+.final-title{font-family:'Playfair Display',serif;font-size:clamp(26px,7vw,40px);font-weight:900;color:var(--gold-light)}
+.final-course{font-style:italic;color:var(--gray-mid);font-size:13px;margin-top:4px}
+.final-big-score{font-family:'Playfair Display',serif;font-size:54px;font-weight:900;text-align:center;margin:12px 0 4px}
+.final-score-label{text-align:center;font-family:'Courier Prime',monospace;font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--gray-mid);margin-bottom:20px}
+.share-section{width:100%;max-width:500px;margin-bottom:18px}
+.share-code-box{background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.3);border-radius:8px;padding:12px 14px;margin-bottom:10px}
+.share-code-label{font-family:'Courier Prime',monospace;font-size:10px;letter-spacing:3px;color:var(--gold);text-transform:uppercase;margin-bottom:6px}
+.share-code-value{font-family:'Courier Prime',monospace;font-size:12px;font-weight:700;letter-spacing:1px;color:var(--gold-light);word-break:break-all;line-height:1.5}
+.share-btn-row{display:flex;gap:10px}
+.final-actions{width:100%;max-width:500px;display:flex;flex-direction:column;gap:10px;margin-top:8px}
+
+/* CONFETTI */
+.confetti-container{position:fixed;inset:0;pointer-events:none;z-index:1000;overflow:hidden}
+.confetti-piece{position:absolute;width:8px;height:8px;top:-10px;border-radius:2px;animation:confettiFall linear forwards}
+@keyframes confettiFall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:0}}
+
+/* PWA BANNER */
+.install-banner{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(135deg,var(--green-felt),var(--green-deep));border-top:1px solid rgba(201,168,76,.3);padding:14px 20px;display:flex;align-items:center;gap:12px;z-index:400;transform:translateY(100%);transition:transform .4s ease;box-shadow:0 -8px 30px rgba(0,0,0,.4)}
+.install-banner.visible{transform:translateY(0)}
+.install-banner-text{flex:1}
+.install-banner-text strong{font-family:'Playfair Display',serif;font-size:15px;color:var(--cream);display:block}
+.install-banner-text span{font-size:11px;color:var(--gray-mid);font-style:italic}
+.install-btn{padding:9px 16px;font-size:13px;border-radius:6px;flex-shrink:0}
+.install-dismiss{background:none;border:none;color:var(--gray-mid);font-size:20px;cursor:pointer;padding:4px;flex-shrink:0}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(201,168,76,.3);border-radius:2px}
+
+/* ── BOTTOM NAV ── */
+:root { --nav-h: 58px; }
+.screen.has-nav { padding-bottom: calc(var(--nav-h) + 4px); }
+.bottom-nav { position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);background:linear-gradient(180deg,rgba(10,22,16,.97),rgba(15,30,22,1));border-top:1px solid rgba(201,168,76,.2);display:flex;z-index:500;backdrop-filter:blur(12px) }
+.nav-tab { flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;border:none;background:none;color:var(--gray-mid);transition:color .2s;padding:6px 0;position:relative }
+.nav-tab.active { color:var(--gold-light) }
+.nav-tab-icon { font-size:20px;line-height:1 }
+.nav-tab-label { font-family:'Courier Prime',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase }
+.nav-badge { position:absolute;top:5px;right:calc(50% - 18px);background:#e06060;color:#fff;font-size:9px;font-family:'Courier Prime',monospace;font-weight:700;border-radius:10px;padding:1px 5px;min-width:16px;text-align:center }
+/* ── LOADING ── */
+.loading-screen { position:fixed;inset:0;background:var(--green-deep);display:flex;align-items:center;justify-content:center;z-index:999;flex-direction:column;gap:14px }
+.loading-title { font-family:'Playfair Display',serif;font-size:22px;color:var(--gold-light) }
+.spinner { width:22px;height:22px;border:2px solid rgba(201,168,76,.3);border-top-color:var(--gold);border-radius:50%;animation:spin .7s linear infinite }
+@keyframes spin { to { transform:rotate(360deg) } }
+/* ── AUTH SCREEN ── */
+#auth-screen { justify-content:center;padding:36px 22px }
+.auth-logo { font-size:50px;display:block;margin-bottom:12px;filter:drop-shadow(0 4px 12px rgba(201,168,76,.4));animation:flagWave 3s ease-in-out infinite;text-align:center }
+.auth-title { font-family:'Playfair Display',serif;font-size:clamp(30px,7vw,46px);font-weight:900;color:var(--gold-light);letter-spacing:2px;text-align:center;text-shadow:0 2px 20px rgba(201,168,76,.3) }
+.auth-subtitle { font-family:'Libre Baskerville',serif;font-style:italic;color:var(--gray-light);font-size:12px;letter-spacing:3px;text-align:center;text-transform:uppercase;margin-top:6px }
+.auth-box { width:100%;max-width:380px;background:rgba(255,255,255,.04);border:1px solid rgba(201,168,76,.2);border-radius:12px;padding:24px 22px;margin-top:26px }
+.auth-tabs { display:flex;margin-bottom:20px;border-bottom:1px solid rgba(201,168,76,.2) }
+.auth-tab { flex:1;padding:10px;text-align:center;font-family:'Courier Prime',monospace;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--gray-mid);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .2s }
+.auth-tab.active { color:var(--gold-light);border-bottom-color:var(--gold) }
+.auth-form { display:none }
+.auth-form.active { display:block }
+.forgot-link { font-family:'Courier Prime',monospace;font-size:11px;color:var(--gray-mid);cursor:pointer;letter-spacing:1px;margin-top:10px;display:inline-block }
+.field-label { font-family:'Courier Prime',monospace;font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--gold);display:block;margin-bottom:6px }
+.field-input { width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(201,168,76,.3);border-radius:6px;padding:12px 14px;color:var(--cream);font-family:'Libre Baskerville',serif;font-size:16px;outline:none;transition:border-color .2s;-webkit-appearance:none }
+.field-input:focus { border-color:var(--gold) }
+.field-input::placeholder { color:var(--gray-mid);font-style:italic;font-size:14px }
+.form-group { margin-bottom:14px }
+.error-msg { color:#e06060;font-size:12px;font-family:'Courier Prime',monospace;margin-top:8px }
+.btn-sm { padding:8px 14px;font-size:13px }
+.btn-full { width:100%;display:block }
+.select-input { width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(201,168,76,.3);border-radius:6px;padding:12px 14px;color:var(--cream);font-family:'Libre Baskerville',serif;font-size:16px;outline:none;-webkit-appearance:none;margin-bottom:12px }
+.select-input option { background:#1a3a2a;color:var(--cream) }
+/* ── HOME USER BAR ── */
+.home-user-bar { display:flex;align-items:center;justify-content:space-between;width:100%;max-width:420px;margin-bottom:16px;padding:10px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(201,168,76,.15);border-radius:8px }
+.home-user-name { font-family:'Playfair Display',serif;font-size:14px;color:var(--cream) }
+.home-user-name span { font-size:10px;font-family:'Courier Prime',monospace;color:var(--gold);letter-spacing:1px;display:block;margin-bottom:1px }
+/* ── TAB SCREENS ── */
+.tab-header { width:100%;background:linear-gradient(180deg,rgba(10,25,18,.97),rgba(26,58,42,.8));border-bottom:1px solid rgba(201,168,76,.2);padding:14px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:50;backdrop-filter:blur(10px) }
+.tab-header-title { font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--gold-light);flex:1 }
+/* ── MATCH CARDS ── */
+.match-card { background:rgba(255,255,255,.04);border:1px solid rgba(201,168,76,.18);border-radius:10px;padding:13px 14px;margin-bottom:11px;cursor:pointer }
+.match-card:active { opacity:.8 }
+.match-card-header { display:flex;align-items:center;justify-content:space-between;margin-bottom:8px }
+.match-course-nm { font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--cream) }
+.match-status-badge { font-family:'Courier Prime',monospace;font-size:10px;letter-spacing:1px;padding:3px 8px;border-radius:10px;text-transform:uppercase }
+.match-status-badge.active { background:rgba(82,183,136,.2);color:var(--green-light);border:1px solid rgba(82,183,136,.3) }
+.match-status-badge.complete { background:rgba(201,168,76,.15);color:var(--gold);border:1px solid rgba(201,168,76,.3) }
+.match-players { display:flex;gap:8px }
+.match-player { flex:1;background:rgba(0,0,0,.2);border-radius:6px;padding:8px 10px }
+.match-player-name { font-family:'Courier Prime',monospace;font-size:10px;letter-spacing:1px;color:var(--gray-mid);text-transform:uppercase;margin-bottom:3px }
+.match-player-score { font-family:'Playfair Display',serif;font-size:18px;font-weight:700 }
+.match-player-holes { font-size:10px;color:var(--gray-mid);font-family:'Courier Prime',monospace }
+.match-player.is-you .match-player-name { color:var(--gold) }
+.winner-banner { background:linear-gradient(135deg,rgba(201,168,76,.15),rgba(124,92,58,.15));border:1px solid rgba(201,168,76,.35);border-radius:8px;padding:10px 14px;text-align:center;margin-top:10px }
+.winner-title { font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:var(--gold-light) }
+/* ── FRIEND CARDS ── */
+.friend-card { background:rgba(255,255,255,.04);border:1px solid rgba(201,168,76,.15);border-radius:8px;padding:11px 13px;margin-bottom:9px;display:flex;align-items:center;gap:11px }
+.friend-avatar { width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--green-mid),var(--green-deep));border:1px solid rgba(201,168,76,.3);display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:var(--gold-light);flex-shrink:0 }
+.friend-name { font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:var(--cream);flex:1 }
+.request-card { background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.25);border-radius:8px;padding:11px 13px;margin-bottom:9px;display:flex;align-items:center;gap:10px }
+.request-name { font-family:'Playfair Display',serif;font-size:14px;color:var(--cream);flex:1 }
+.search-result-card { background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:11px 13px;margin-bottom:8px;display:flex;align-items:center;gap:10px }
+.search-row { display:flex;gap:10px;margin-bottom:16px }
+/* ── MODAL ── */
+.modal-overlay { position:fixed;inset:0;background:rgba(10,22,16,.92);backdrop-filter:blur(8px);z-index:600;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s }
+.modal-overlay.visible { opacity:1;pointer-events:all }
+.modal-sheet { width:100%;max-width:480px;background:linear-gradient(160deg,var(--green-felt),var(--green-deep));border:1px solid rgba(201,168,76,.3);border-radius:16px 16px 0 0;padding:22px 18px 32px;transform:translateY(100%);transition:transform .3s;position:relative }
+.modal-overlay.visible .modal-sheet { transform:translateY(0) }
+.modal-title { font-family:'Playfair Display',serif;font-size:19px;font-weight:700;color:var(--gold-light);margin-bottom:18px }
+.modal-close { position:absolute;top:14px;right:14px;background:none;border:1px solid rgba(201,168,76,.3);color:var(--gold);border-radius:50%;width:28px;height:28px;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center }
+/* ── MATCH GAME EXTRA BAR ── */
+.match-opp-bar { width:100%;background:rgba(10,22,16,.8);border-bottom:1px solid rgba(255,255,255,.06);padding:7px 14px;display:flex;align-items:center;gap:10px }
+.opp-avatar-sm { width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--green-mid),var(--green-deep));border:1px solid rgba(201,168,76,.3);display:flex;align-items:center;justify-content:center;font-size:11px;font-family:'Playfair Display',serif;font-weight:700;color:var(--gold-light);flex-shrink:0 }
+.opp-info { flex:1 }
+.opp-name-sm { font-family:'Courier Prime',monospace;font-size:10px;color:var(--gray-mid);letter-spacing:1px }
+.opp-score-sm { font-family:'Playfair Display',serif;font-size:13px;font-weight:700;color:var(--cream) }
+.opp-holes-sm { font-family:'Courier Prime',monospace;font-size:10px;color:var(--gray-mid);margin-left:6px }
+.match-back-btn { background:none;border:1px solid rgba(201,168,76,.3);color:var(--gold);border-radius:6px;padding:5px 10px;font-family:'Courier Prime',monospace;font-size:11px;cursor:pointer;letter-spacing:1px;flex-shrink:0 }
+/* ── EMPTY STATE ── */
+.empty-state { text-align:center;padding:32px 16px;color:var(--gray-mid) }
+.empty-state-icon { font-size:34px;display:block;margin-bottom:10px }
+.empty-state-text { font-family:'Playfair Display',serif;font-size:15px;color:var(--cream);margin-bottom:4px }
+.empty-state-sub { font-size:12px;font-style:italic }
+
+</style>
+</head>
+<body>
+
+<div class="toast-container" id="toast-container"></div>
+<div class="confetti-container" id="confetti-container"></div>
+
+<!-- LOADING -->
+<div class="loading-screen" id="loading-screen">
+  <div style="font-size:50px">⛳</div>
+  <div class="loading-title">Word Golf</div>
+  <div class="spinner"></div>
+</div>
+
+<!-- AUTH SCREEN -->
+<div id="auth-screen" class="screen">
+  <span class="auth-logo">⛳</span>
+  <h1 class="auth-title">WORD GOLF</h1>
+  <p class="auth-subtitle">18 Holes · Par 72 · Lower is Better</p>
+  <div class="auth-box">
+    <div class="auth-tabs">
+      <div class="auth-tab active" onclick="switchAuthTab('login')">Sign In</div>
+      <div class="auth-tab" onclick="switchAuthTab('register')">Create Account</div>
+    </div>
+    <div id="auth-login" class="auth-form active">
+      <div class="form-group"><label class="field-label">Email</label><input class="field-input" id="login-email" type="email" placeholder="your@email.com" autocomplete="email"></div>
+      <div class="form-group"><label class="field-label">Password</label><input class="field-input" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password"></div>
+      <div id="login-error" class="error-msg" style="display:none"></div>
+      <button class="btn btn-full" onclick="doLogin()" style="margin-top:4px">Sign In →</button>
+      <div style="text-align:center;margin-top:11px"><span class="forgot-link" onclick="doForgotPassword()">Forgot password?</span></div>
+    </div>
+    <div id="auth-register" class="auth-form">
+      <div class="form-group"><label class="field-label">Display Name</label><input class="field-input" id="reg-name" type="text" placeholder="Your name" autocomplete="nickname" maxlength="24"></div>
+      <div class="form-group"><label class="field-label">Email</label><input class="field-input" id="reg-email" type="email" placeholder="your@email.com" autocomplete="email"></div>
+      <div class="form-group"><label class="field-label">Password</label><input class="field-input" id="reg-password" type="password" placeholder="Min 6 characters" autocomplete="new-password"></div>
+      <div id="reg-error" class="error-msg" style="display:none"></div>
+      <button class="btn btn-full" onclick="doRegister()" style="margin-top:4px">Create Account →</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOME -->
+<div id="home-screen" class="screen has-nav">
+  <div class="home-user-bar">
+    <div class="home-user-name"><span>Signed in as</span><span id="home-display-name">—</span></div>
+    <button class="btn btn-secondary btn-sm" onclick="doLogout()">Sign Out</button>
+  </div>
+  <div class="home-header">
+    <span class="flag-icon">⛳</span>
+    <h1 class="game-title">WORD GOLF</h1>
+    <p class="game-subtitle">18 Holes · Par 72 · Lower is Better</p>
+    <div class="divider"></div>
+  </div>
+  <div id="resume-section" class="home-section" style="display:none">
+    <div class="section-label">In Progress</div>
+    <div class="resume-card" onclick="resumeRound()">
+      <div class="resume-icon">🏌️</div>
+      <div>
+        <div class="resume-text-main" id="resume-text-main">Continue Round</div>
+        <div class="resume-text-sub" id="resume-text-sub">Tap to resume</div>
+      </div>
+    </div>
+  </div>
+  <div class="home-section">
+    <div class="section-label">Choose Your Course</div>
+    <div id="course-list"></div>
+    <div class="course-card" onclick="openBuilder()" style="border-color:rgba(201,168,76,.4);background:linear-gradient(135deg,rgba(201,168,76,.07),rgba(124,92,58,.07))">
+      <div class="course-name" style="color:var(--gold-light)">✏️ Create Custom Course</div>
+      <div class="course-meta">Design your own 18 holes &amp; share the code with friends</div>
+      <span class="course-arrow">→</span>
+    </div>
+    <div class="course-card" onclick="startPracticeRound()" style="border-style:dashed">
+      <div class="course-name" style="color:var(--green-light)">🎯 Practice Round</div>
+      <div class="course-meta">18 random words — no shareable code</div>
+      <span class="course-arrow">→</span>
+    </div>
+  </div>
+  <div class="home-section">
+    <div class="section-label">Play a Friend's Course</div>
+    <div class="code-input-row">
+      <input class="code-input" id="course-code-input" placeholder="PASTE COURSE CODE" maxlength="300" oninput="this.value=this.value.toUpperCase().trim()">
+      <button class="btn" onclick="loadCourseCode()">Play</button>
+    </div>
+    <p class="text-under">Enter a code shared by a friend to play their exact course</p>
+  </div>
+</div>
+
+<!-- MATCHES SCREEN -->
+<div id="matches-screen" class="screen has-nav">
+  <div class="tab-header">
+    <div class="tab-header-title">⚔️ Matches</div>
+    <button class="btn btn-sm" onclick="openNewMatchModal()">+ New Match</button>
+  </div>
+  <div style="width:100%;max-width:480px;padding:18px 16px">
+    <div id="matches-list"><div class="empty-state"><span class="empty-state-icon">⚔️</span><div class="empty-state-text">No matches yet</div><div class="empty-state-sub">Challenge a friend to start playing</div></div></div>
+  </div>
+</div>
+
+<!-- FRIENDS SCREEN -->
+<div id="friends-screen" class="screen has-nav">
+  <div class="tab-header"><div class="tab-header-title">🤝 Friends</div></div>
+  <div style="width:100%;max-width:480px;padding:18px 16px">
+    <div class="section-label">Find Players</div>
+    <div class="search-row">
+      <input class="field-input" id="friend-search-input" placeholder="Search by display name…" style="flex:1">
+      <button class="btn btn-sm" onclick="searchFriends()">Search</button>
+    </div>
+    <div id="friend-search-results"></div>
+    <div id="friend-requests-section" style="display:none">
+      <div class="section-label" style="margin-top:14px">Friend Requests</div>
+      <div id="friend-requests-list"></div>
+    </div>
+    <div class="section-label" style="margin-top:14px">Friends</div>
+    <div id="friends-list"><div class="empty-state" style="padding:14px 0"><span class="empty-state-icon">🤝</span><div class="empty-state-text">No friends yet</div><div class="empty-state-sub">Search above to add players</div></div></div>
+  </div>
+</div>
+
+<!-- MATCH GAME SCREEN -->
+<div id="match-game-screen" class="screen">
+  <div class="game-header">
+    <button class="scorecard-toggle-btn" onclick="toggleMatchScorecard()">📋</button>
+    <div class="hole-info"><div class="hole-number" id="match-hole-number-display">Hole 1 of 18 · Par 4</div></div>
+    <div class="score-badge" onclick="toggleMatchScorecard()" id="match-running-score-badge">E</div>
+  </div>
+  <div class="match-opp-bar">
+    <div class="opp-avatar-sm" id="match-opp-avatar">?</div>
+    <div class="opp-info">
+      <div class="opp-name-sm" id="match-opp-name-sm">Opponent</div>
+      <div><span class="opp-score-sm" id="match-opp-score-sm">E</span><span class="opp-holes-sm" id="match-opp-holes-sm">0/18 holes</span></div>
+    </div>
+    <button class="match-back-btn" onclick="exitMatchGame()">← Exit</button>
+  </div>
+  <div class="grid-container"><div class="grid" id="match-game-grid"></div></div>
+  <div class="keyboard" id="match-keyboard"></div>
+</div>
+
+<!-- MATCH SCORECARD PANEL -->
+<div class="scorecard-panel" id="match-scorecard-panel">
+  <div class="scorecard-inner">
+    <div class="scorecard-header">
+      <div class="scorecard-title" id="match-sc-course-name">Match Scorecard</div>
+      <button class="scorecard-close" onclick="toggleMatchScorecard()">✕</button>
+    </div>
+    <div id="match-scorecard-content"></div>
+  </div>
+</div>
+
+<!-- NEW MATCH MODAL -->
+<div class="modal-overlay" id="new-match-modal">
+  <div class="modal-sheet">
+    <button class="modal-close" onclick="closeNewMatchModal()">✕</button>
+    <div class="modal-title">Start a Match</div>
+    <div class="form-group">
+      <label class="field-label">Challenge</label>
+      <select class="select-input" id="match-friend-select"><option value="">— Select a friend —</option></select>
+    </div>
+    <div class="form-group">
+      <label class="field-label">Course</label>
+      <select class="select-input" id="match-course-select">
+        <option value="PEB01">Pebble Beach</option>
+        <option value="AUG01">Augusta National</option>
+        <option value="STA01">St. Andrews</option>
+      </select>
+    </div>
+    <button class="btn btn-full" onclick="createMatch()">⛳ Start Match</button>
+  </div>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav" id="bottom-nav" style="display:none">
+  <button class="nav-tab active" id="nav-play" onclick="navTo('play')">
+    <div class="nav-tab-icon">⛳</div><div class="nav-tab-label">Play</div>
+  </button>
+  <button class="nav-tab" id="nav-matches" onclick="navTo('matches')">
+    <div class="nav-tab-icon">⚔️</div><div class="nav-tab-label">Matches</div>
+    <div class="nav-badge" id="matches-badge" style="display:none">0</div>
+  </button>
+  <button class="nav-tab" id="nav-friends" onclick="navTo('friends')">
+    <div class="nav-tab-icon">🤝</div><div class="nav-tab-label">Friends</div>
+    <div class="nav-badge" id="friends-badge" style="display:none">0</div>
+  </button>
+</nav>
+
+<!-- BUILDER -->
+<div id="builder-screen" class="screen">
+  <div class="builder-header">
+    <button class="builder-back-btn" onclick="goHome()">← Back</button>
+    <div class="builder-title">Course Designer</div>
+  </div>
+  <div class="builder-body">
+    <div class="builder-name-row">
+      <label class="builder-label">Course Name</label>
+      <input class="builder-name-input" id="builder-course-name" placeholder="e.g. The Lakeside Links" maxlength="40">
+    </div>
+    <div class="builder-label" style="margin-bottom:10px">Your 18 Holes</div>
+    <div class="builder-progress" id="builder-progress">0 of 18 holes filled · <span>0 valid</span></div>
+    <div class="hole-builder-grid" id="hole-builder-grid"></div>
+    <div class="builder-actions">
+      <button class="btn fill-random-btn" onclick="fillRemainingRandom()">🎲 Auto-Fill Empty Holes</button>
+      <button class="btn" id="builder-launch-btn" onclick="launchCustomCourse()" disabled style="opacity:.5">⛳ Launch &amp; Get Share Code</button>
+      <p class="text-under">All 18 holes need valid 5-letter words · Unknown words show ❓ but still work</p>
+    </div>
+  </div>
+</div>
+
+<!-- GAME -->
+<div id="game-screen" class="screen">
+  <div class="game-header">
+    <button class="scorecard-toggle-btn" onclick="toggleScorecard()">📋</button>
+    <div class="hole-info">
+      <div class="hole-number" id="hole-number-display">Hole 1 of 18 · Par 4</div>
+    </div>
+    <div class="score-badge" onclick="toggleScorecard()" id="running-score-badge">E</div>
+  </div>
+  <div class="grid-container"><div class="grid" id="game-grid"></div></div>
+  <div class="keyboard" id="keyboard"></div>
+</div>
+
+<!-- HOLE RESULT -->
+<div class="hole-result-overlay" id="hole-result-overlay">
+  <div class="result-card">
+    <span class="result-icon" id="result-icon">🎯</span>
+    <div class="result-label" id="result-label">Birdie!</div>
+    <div class="result-score-text" id="result-score-text">3 guesses · −1</div>
+    <div class="result-word" id="result-word">CRANE</div>
+    <button class="btn result-next-btn" id="result-next-btn" onclick="nextHole()">Next Hole →</button>
+  </div>
+</div>
+
+<!-- SCORECARD -->
+<div class="scorecard-panel" id="scorecard-panel">
+  <div class="scorecard-inner">
+    <div class="scorecard-header">
+      <div class="scorecard-title" id="sc-course-name">Scorecard</div>
+      <button class="scorecard-close" onclick="toggleScorecard()">✕</button>
+    </div>
+    <div id="scorecard-content"></div>
+  </div>
+</div>
+
+<!-- FINAL -->
+<div id="final-screen" class="screen">
+  <div class="final-header">
+    <div class="flag-icon" style="font-size:40px">🏆</div>
+    <h2 class="final-title">Round Complete!</h2>
+    <div class="final-course" id="final-course-name"></div>
+  </div>
+  <div class="final-big-score" id="final-big-score">E</div>
+  <div class="final-score-label" id="final-score-label"></div>
+  <div class="share-section">
+    <div class="section-label" style="text-align:center;margin-bottom:10px">Course Code — Share With Friends</div>
+    <div class="share-code-box">
+      <div class="share-code-label">Copy this code so friends can play your exact course</div>
+      <div class="share-code-value" id="final-course-code"></div>
+    </div>
+    <div class="share-btn-row">
+      <button class="btn" style="flex:1" onclick="copyShareText()">📋 Share Results</button>
+      <button class="btn btn-secondary" style="flex:1" onclick="copyCode()">Copy Code</button>
+    </div>
+  </div>
+  <div id="final-scorecard-content" style="width:100%;max-width:500px;margin-bottom:20px"></div>
+  <div class="final-actions">
+    <button class="btn" onclick="goHome()">⛳ Back to Clubhouse</button>
+  </div>
+</div>
+
+<!-- PWA INSTALL BANNER -->
+<div class="install-banner" id="install-banner">
+  <div class="install-banner-text">
+    <strong>Add to Home Screen</strong>
+    <span>Play offline · No app store needed</span>
+  </div>
+  <button class="btn install-btn" onclick="triggerInstall()">Install</button>
+  <button class="install-dismiss" onclick="dismissInstall()">✕</button>
+</div>
+
+<script>
+// ═══════════════════════════
+//  PWA SETUP
+// ═══════════════════════════
+(function injectManifest(){
+  const m={name:"Word Golf",short_name:"Word Golf",description:"18 holes of word puzzles. Lower score wins.",start_url:"./",display:"standalone",background_color:"#1a3a2a",theme_color:"#1a3a2a",orientation:"portrait",
+    icons:[{src:"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' fill='%231a3a2a' rx='32'/%3E%3Ctext x='96' y='136' font-size='110' text-anchor='middle'%3E⛳%3C/text%3E%3C/svg%3E",sizes:"192x192",type:"image/svg+xml"},
+           {src:"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%231a3a2a' rx='80'/%3E%3Ctext x='256' y='370' font-size='300' text-anchor='middle'%3E⛳%3C/text%3E%3C/svg%3E",sizes:"512x512",type:"image/svg+xml"}]};
+  const b=new Blob([JSON.stringify(m)],{type:'application/json'});
+  const l=document.createElement('link');l.rel='manifest';l.href=URL.createObjectURL(b);
+  document.head.appendChild(l);
+})();
+
+if('serviceWorker'in navigator){
+  const sw=`const C='wg-v2';
+self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.addAll(['https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Courier+Prime:wght@400;700&display=swap']).catch(()=>{})))});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))));self.clients.claim()});
+self.addEventListener('fetch',e=>{e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{if(res.ok&&e.request.url.includes('fonts.'))caches.open(C).then(c=>c.put(e.request,res.clone()));return res}).catch(()=>new Response('',{status:503}))))});`;
+  navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:'application/javascript'}))).catch(()=>{});
+}
+
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;if(!localStorage.getItem('wg_nodismiss'))setTimeout(()=>document.getElementById('install-banner').classList.add('visible'),4000)});
+function triggerInstall(){if(!deferredPrompt)return;deferredPrompt.prompt();deferredPrompt.userChoice.then(()=>{deferredPrompt=null;dismissInstall()})}
+function dismissInstall(){document.getElementById('install-banner').classList.remove('visible');localStorage.setItem('wg_nodismiss','1')}
+window.addEventListener('appinstalled',()=>{dismissInstall();toast('App installed! ⛳')});
+
+// ═══════════════════════════
+//  COURSE DATA
+// ═══════════════════════════
+const COURSES=[
+  {id:'PEB01',name:'Pebble Beach',description:'Seaside Links · Carmel, California',
+   words:['CRANE','SWIFT','BLOOM','STONE','OCEAN','BRAVE','CEDAR','LIGHT','GRACE','FLAME','TIGER','SPORT','PRIDE','GLARE','BROWN','CHEST','PLANT','SWORD'],
+   flavors:['Hole 1 — The Opener. A gentle start by the shoreline.','Hole 2 — Sea Breeze. The Pacific wind tests your aim.','Hole 3 — The Meadow. Wildflowers line the fairway.','Hole 4 — Rocky Point. Watch the cliffs to your left.','Hole 5 — The Bay. A stunning par 4 over open water.','Hole 6 — The Brave. Only the bold make birdie here.','Hole 7 — The Cypress. A single tree guards the green.','Hole 8 — Lighthouse. Play toward the white tower.','Hole 9 — The Turn. Halfway through the links.','Hole 10 — The Ridge. Elevation changes everything.','Hole 11 — Tiger Country. Watch the rough.','Hole 12 — The Sport. Keep it straight and true.','Hole 13 — The Cliff. Pride before the fall.','Hole 14 — Sundown. The afternoon light blinds.','Hole 15 — The Beach. Sand in every direction.','Hole 16 — The Chest. Buried treasure in the bunkers.','Hole 17 — The Plant. Iceplant lines the hillside.','Hole 18 — The Finish. A triumphant walk to the clubhouse.']},
+  {id:'AUG01',name:'Augusta National',description:'Masters Country · Augusta, Georgia',
+   words:['MAPLE','RISEN','PINES','CREEK','GRAND','EAGLE','BLUSH','QUIET','STEEP','BIRCH','CROWD','IVORY','VINES','DUNES','GLASS','SHARP','PATCH','SWAMP'],
+   flavors:['Hole 1 — Tea Olive. The gallery holds its breath.','Hole 2 — Pink Dogwood. A long and winding hole.','Hole 3 — Flowering Peach. The shortest par four.','Hole 4 — Crabapple. Ike\'s Pond glistens below.','Hole 5 — Magnolia. Towering trees line both sides.','Hole 6 — Juniper. The eagle lands with authority.','Hole 7 — Pampas. Blossoms carpet the bank.','Hole 8 — Yellow Jasmine. The quietest par five.','Hole 9 — Carolina Cherry. The back nine awaits.','Hole 10 — Camellia. The slope deceives every year.','Hole 11 — White Dogwood. Amen Corner begins.','Hole 12 — Golden Bell. The most treacherous short hole.','Hole 13 — Azalea. The creek hungers below.','Hole 14 — Chinese Fir. The dunes shift with the season.','Hole 15 — Firethorn. The pond demands respect.','Hole 16 — Redbud. A sharp iron to an island green.','Hole 17 — Nandina. Late afternoon patches of light.','Hole 18 — Holly. Climb to the champion\'s green.']},
+  {id:'STA01',name:'St. Andrews',description:'The Old Course · Fife, Scotland',
+   words:['LINKS','WINDS','STONE','SCORE','BURNS','BIRDY','TURFS','MATCH','HONOR','PITCH','ROUGH','STAKE','SWING','FRONT','WEEDS','BOGEY','DRIVE','GRIND'],
+   flavors:['Hole 1 — Burn. The Swilcan Burn awaits the wayward.','Hole 2 — Dyke. A long and punishing opener.','Hole 3 — Cartgate Out. The winds pick up here.','Hole 4 — Ginger Beer. Old Tom Morris\'s favorite.','Hole 5 — Hole o\' Cross. Cross it or suffer.','Hole 6 — Heathery Out. The broom blooms yellow.','Hole 7 — High Out. The highest point on the course.','Hole 8 — Short. Deceptively tricky.','Hole 9 — End. The turn into the teeth of the wind.','Hole 10 — Bobby Jones. The great man played here.','Hole 11 — High In. The rough will punish you.','Hole 12 — Heathery In. Stakes mark the boundary.','Hole 13 — Hole o\' Cross In. The swing must be true.','Hole 14 — Long. The longest hole on the course.','Hole 15 — Cartgate In. Hazards left and right.','Hole 16 — Corner of the Dyke. Bogey streak ends here.','Hole 17 — Road Hole. The most famous par four in golf.','Hole 18 — Tom Morris. Walk the last fairway with pride.']}
+];
+
+// Large pool for random fill & practice
+const WORD_POOL=['APPLE','BRAVE','CHALK','DANCE','EARLY','FLESH','GRACE','HEART','INPUT','JUMPY','KNACK','LAUGH','MANGO','NIPPY','OFFER','PENNY','QUEST','RELAY','SHONE','THINK','URBAN','VALVE','WRATH','YEARN','ABIDE','BLAZE','CLUMP','DRAFT','EVOKE','FRANK','GROAN','HOLLY','INFER','JOUST','KARMA','MERCY','NOBLE','OLIVE','POLAR','QUIRK','REBEL','SCOWL','TRUCE','UNTIE','VALOR','WOVEN','ADORE','BISON','CORAL','DEPOT','EXPEL','FRISK','GRAIL','HOVER','IDEAL','JUDGE','LUNAR','MIRTH','CRISP','ELBOW','FINCH','GLOOM','HAZEL','KNEEL','LEDGE','NOTCH','OTTER','PRISM','RAINY','STOMP','TULIP','USHER','VIGOR','WALTZ','ZESTY','AUDIT','BIRCH','CEDAR','EPOCH','FEAST','GLYPH','HOIST','JOKER','KNOLL','LOAMY','MANOR','NOMAD','PIXEL','RAMEN','SATYR','TRAMP','ULCER','VICAR','BLUNT','CRIMP','DUNCE','ABASH','BRASH','CHANT','CLOAK','DENIM','FLIRT','GLARE','HASTE','IRONY','KINKY','LUSTY','MOODY','NUDGE','ONSET','PERCH','QUERY','RUSTY','SAVVY','TACIT','UNFIT','VENOM','WITTY','EXILE','FORGE','GUSTO','HELIX','ICING','KNAVE','LOFTY','MAXIM','NERVE','OUTDO','PLAID','QUOTA','RIVET','SOGGY','TALON','UNDUE','VAPID','WINDY','FOLLY','GUILE','HUMID','INEPT','JADED','KITTY','LIMBO','MURKY','NIFTY','OPTIC','PANIC','REALM','SCANT','TIPSY','ULTRA','VIVID','WEARY','YACHT','ZIPPY','FLAIR','GAUDY','IDIOM','JAUNT','KUDOS','LYRIC','MEALY','OVOID','PLUMB','RANDY','SCOFF','TABBY','UNIFY','WACKY','APTLY','BURLY','CAMEO','DEITY','EMOTE','FERRY','GAMUT','HUBBY','LARVA','MISER','NADIR','OCTET','PASTY','RABID','SIGMA','TAWNY','UDDER','VERGE','STAID','SPIRE','TIARA','CRANE','SWIFT','BLOOM','STONE','OCEAN','BRAVE','CEDAR','LIGHT','GRACE','FLAME','TIGER','SPORT','PRIDE','GLARE','BROWN','CHEST','PLANT','SWORD','MAPLE','RISEN','PINES','CREEK','GRAND','EAGLE','BLUSH','QUIET','STEEP','CROWD','IVORY','VINES','DUNES','GLASS','SHARP','PATCH','SWAMP','LINKS','WINDS','SCORE','BURNS','TURFS','MATCH','HONOR','PITCH','ROUGH','STAKE','SWING','FRONT','WEEDS','BOGEY','DRIVE','GRIND','CREST','CLEFT','BEVEL','DRAPE','FROST','GLINT','HIPPO','INLET','LATCH','NICHE','ORBIT','PLEAT','RISKY','SNARE','THORN','UMBRA','VAGUE','WRUNG','ABODE','ADEPT','AFFIX','AGLOW','ALOFT','ALTAR','AMUSE','ARGON','AROMA','ARTSY','BEFIT','BEIGE','BELLE','BEVEL','BIOME','BLAND','BLINK','BLISS'];
+const POOL=[...new Set(WORD_POOL.filter(w=>w.length===5))];
+
+// VALID WORDS — built-in ~1500 word fallback, expanded at runtime by fetching
+// the full dwyl open-source English dictionary (~370k words, ~15k are 5-letter).
+// Cached in localStorage after first successful fetch.
+const VALID=new Set();
+COURSES.forEach(c=>c.words.forEach(w=>VALID.add(w)));
+POOL.forEach(w=>VALID.add(w));
+
+const FALLBACK_WORDS=`AAHED AALII ABACI ABACK ABAFT ABASE ABASH ABATE ABBEY ABBOT ABIDE ABLER ABODE ABORT ABOUT ABOVE ABUSE ABYSS ACHED ACHES ACORN ACRES ACTED ACUTE ADAGE ADDED ADEPT ADMIT ADOBE ADOPT ADORE ADORN ADULT AFFIX AFTER AGAIN AGATE AGAVE AGENT AGILE AGING AGLOW AGONY AGREE AHEAD AIDED AIMED AIRED AISLE ALARM ALBUM ALDER ALERT ALIBI ALLAY ALLOT ALLOW ALLOY ALOFT ALONE ALONG ALOOF ALOUD ALPHA ALTAR ALTER AMBER AMBLE AMEND AMISS AMONG AMPLE AMUSE ANGEL ANGER ANGLE ANGRY ANNEX ANNOY ANTIC ANVIL AORTA APPLE APPLY APRON APTLY ARBOR ARDOR ARENA ARGON ARISE ARMOR AROMA AROSE ARRAY ARROW ARTSY ASCOT ASHEN ASIDE ASKED ASSAY ASTER ATONE ATTIC AUDIO AUDIT AUGUR AUNTS AVAIL AVIAN AVOID AWASH AWFUL AWOKE AZURE BABEL BADGE BADLY BAKER BALMY BANDY BARGE BARON BASED BASIN BASTE BATCH BAYOU BEACH BEADY BEARD BEAST BEECH BEFIT BEIGE BELAY BELLE BENCH BEVEL BISON BIOME BLADE BLAME BLAND BLANK BLAST BLAZE BLEED BLESS BLIND BLINK BLISS BLITZ BLOCK BLOKE BLOND BLOOD BLOWN BLUES BLUNT BLURT BOAST BOGUS BOLTS BONDS BONUS BOTCH BOUND BRAKE BRAND BRASH BRASS BRAWL BREAM BREED BRIAR BRIDE BRIEF BRINE BRISK BROAD BROOD BROIL BROOK BROTH BROWN BRUSH BRUTE BUILD BULGE BULLY BUNCH BURLY BURNT BURST BUSHY CABLE CACHE CADET CAMEL CANDY CANNY CARGO CASTE CATCH CAULK CAUSE CEDAR CHAFE CHANT CHAOS CHEER CHESS CHEWY CHIEF CHILD CHILL CHIMP CHOIR CHORD CINCH CIVIC CIVIL CLAMP CLANG CLASH CLASP CLEAT CLEFT CLERK CLICK CLIFF CLIMB CLING CLOAK CLOCK CLONE CLOSE CLOTH CLOUD CLOUT CLUCK CLUMP COCOA COMET COMIC CORAL CORPS COUCH COURT COVET CRAFT CRANE CRAVE CRAWL CREST CREEP CRIMP CRISP CROAK CROSS CROWD CROWN CRUDE CRUMB CRUSH CRUST CRYPT CURLY CURVE CYNIC DAILY DAISY DANCE DANDY DATUM DAUNT DEALT DECAY DECOY DEPOT DEPTH DERBY DEVIL LIGHT DIRGE DISCO DODGE DOWDY DOWEL DRAFT DRAIN DRAMA DRAPE DRAWL DREAD DREAM DREAR DRESS DRIFT DRILL DRINK DROOL DROOP DROVE DROWN DRUGS DRUMS DUNCE DUSKY DUSTY DWARF DWELL EARLY EASEL EERIE EIGHT EJECT ELDER ELECT ELITE EMBED EMOTE EMPTY ENEMY EPOCH EQUIP ERODE EVADE EVOKE EXACT EXERT EXILE EXTRA EXUDE FACET FAIRY FAITH FALSE FANCY FEAST FENCE FERAL FETCH FEVER FIBER FLAIR FLANK FLARE FLESH FLICK FLOCK FLOOD FLOSS FLUNG FLUTE FOAMY FORCE FORGE FORTH FOUND FRAIL FRANK FRAUD FREAK FRESH FROTH FROZE FUNGI FUSSY FUZZY GAUDY GAUZE GAVEL GEARS GHOST GIRTH GIVEN GLIDE GLOOM GLOSS GLOVE GLYPH GNASH GORGE GOURD GRAFT GRAIL GRAIN GRASP GRAVY GRAZE GREED GREET GRIEF GRILL GRIME GRIMY GRIPE GROAN GROSS GROVE GRUFF GUISE GULCH GUSTO GYPSY HASTE HATCH HAUNT HAVEN HEAVE HEDGE HELIX HERON HIPPO HOIST HONEY HONOR HORDE HOTEL HOUND HOUSE HOVER HUMAN HUMID HUMOR HYENA IDYLL IGLOO IMAGE INANE INERT INFER INGOT INPUT INTER INTRO INURE JOUST JUMPY JUROR KARMA KNACK KNAVE KNELT KNIFE KNOCK KNOLL LATCH LATER LATHE LATTE LAYER LEAFY LEDGE LEECH LEGGY LEVEL LIMBO LINEN LINER LINGO LIPID LIVER LOAMY LODGE LOFTY LOGIC LONER LOSER LOUSE LUCID LUMPY LUSTY MACHO MAGIC MANOR MARCH MAXIM MEALY MEDAL MINCE MINOR MIRTH MISER MOCHA MODEL MOODY MORAL MOTOR MOTTO MOUND MOUNT MOURN MUDDY MURAL MURKY MUSSY MUSTY NABOB NADIR NAIVE NASAL NAVAL NERVE NIFTY NIGHT NOBLE NOMAD NORTH NOTCH NOVEL NUDGE NURSE NYMPH OAKEN OCCUR OLIVE ONSET OPTIC ORBIT OTTER OVOID OXIDE OZONE PADDY PANSY PAPAL PARCH PARSE PEARL PENAL PERCH PERKY PESKY PETTY PHASE PIANO PINCH PIXEL PLAID PLAIN PLANK PLAZA PLEAT PLUCK PLUME PLUMP PLUSH POACH PODGY POKER POLAR POUCH PREEN PRESS PRICE PRICK PRISM PRIVY PROBE PROSE PROWL PRUDE PSALM PULSE PUNCH PURGE PUFFY QUACK QUAFF QUALM QUASH QUEEN QUERY QUEST QUEUE QUILL QUIRK QUOTE RABID RAMEN RANCH REBEL REBUS REEDY REIGN RELAY REMIX RENEW REPAY REPEL RERUN RESIN RETRO RIDGE RIGID RISKY RIVAL RIVET ROBIN ROCKY ROOMY ROUGE ROYAL RUDDY RUSTY SAGGY SAINT SALVE SALVO SAUCE SAVVY SCALD SCALP SCANT SCARE SCARF SCENE SCOFF SCOLD SCOOP SCOPE SCOUT SCOWL SCRAM SCRAP SCREE SCREW SCRUB SENSE SERVE SETUP SEVER SHADE SHADY SHAFT SHAKE SHALE SHALL SHANK SHAPE SHARE SHARK SHEAR SHEEN SHELL SHIFT SHINE SHIRE SHARD SHORE SHORT SHOUT SHOVE SHRUB SHRUG SIEGE SIGMA SILLY SINCE SKILL SKIMP SKUNK SLANT SLICK SLIME SLING SLOPE SLOSH SLUMP SLUNK SMACK SMART SMASH SMEAR SMELL SMELT SMILE SMITE SMOCK SMOKE SNACK SNARE SNEAK SNIDE SNIFF SNORE SNORT SOLAR SOLID SOLVE SONIC SOUND SOUTH SPEAK SPEAR SPECK SPEND SPICE SPILL SPINE SPIRE SPOOK SPRAY SPRIG SPUNK STACK STAID STAIN STAIR STAMP STAND STANK STARK START STASH STAVE STEAM STEEP STEER STERN STOIC STOLE STOMP STORE STOUT STOVE STRAP STRAW STRAY STRUT STUDY STUFF STUMP STUNG STUNK STUNT SURGE SWAMP SWEAR SWEAT SWEEP SWEPT SWOOP TABBY TALON TAWNY TEPID TERSE THANK THEME THINK THORN THOSE THREE THREW THROW THROB THUMP TIARA TIGER TIGHT TIPSY TITHE TITLE TOTEM TOUCH TOUGH TRACE TRACK TRAIT TRAMP TRASH TRAWL TRIPE TROTH TROUT TRUCE TRULY TRUMP TRUNK TRYST TUNER TUNIC TUTOR TWANG TWEED TWICE TWIRL TWIST UDDER ULTRA UMBRA UNFIT UNITE UNMET UNTIE UNTIL UPPER USHER USURP VALOR VENOM VERSE VIDEO VIGOR VIOLA VIPER VIRAL VOICE VOTER VOUCH VYING WACKY WADER WALTZ WARTY WASTE WATCH WEEDY WEIGH WEIRD WHILE WHACK WHIRL WHISK WITTY WHOLE WHOOP WINDY WIDER WIELD WOKEN WRATH ZESTY ZONED ZILCH ABIDE BLAZE CLUMP DRAFT EVOKE FRANK GROAN HOLLY INFER MERCY NOBLE OLIVE POLAR QUIRK SCOWL TRUCE VALOR WOVEN ADORE BISON CORAL DEPOT EXPEL FRISK GRAIL HOVER IDEAL JUDGE LUNAR MIRTH CRISP ELBOW FINCH GLOOM HAZEL KNEEL LEDGE NOTCH OTTER PRISM RAINY STOMP TULIP USHER WALTZ AUDIT BIRCH CEDAR EPOCH FEAST GLYPH HOIST JOKER KNOLL LOAMY MANOR NOMAD PIXEL RAMEN SATYR TRAMP ULCER VICAR BLUNT CRIMP DUNCE FLAIR GAUDY HUBBY IDIOM JAUNT KUDOS LYRIC NUDGE OVOID PLUMB RANDY SCOFF TABBY UNIFY APTLY BURLY CAMEO DEITY EMOTE FERRY GAMUT LARVA NADIR OCTET PASTY SIGMA TAWNY UDDER VERGE STAID SPIRE TIARA BIRDY TURFS BURNS LINKS BOGEY DRIVE GRIND WEEDS FRONT STAKE ROUGH PITCH HONOR MATCH SWING SCORE WINDS STONE SWAMP PATCH SHARP GLASS DUNES VINES IVORY CROWD BIRCH STEEP QUIET BLUSH EAGLE GRAND CREEK PINES RISEN MAPLE SWORD PLANT CHEST BROWN GLARE PRIDE SPORT TIGER FLAME GRACE CEDAR LIGHT BRAVE OCEAN SWIFT CRANE ABBOT ACRID ACTOR ADIEU ADIOS AGENE AGIOS ALGAE ALGID ALGIN ALIAS ALIEN ALIGN ALIKE ALLEE ALLEY ALLOD ALULA ALUMS AMAHS AMAIN AMASS AMAZE AMBIT AMEBA AMIDE AMIGO AMINO AMITY AMORT AMOUR AMRIT AMUCK AMYLS ANEAR ANGST ANIME ANISE ANTIS APERS APIAN APHIS APISH APODE APORT APPEL ARCED AREAL AREAR ARECA ARGOT ARGUS ARIEL ARLES AROID AROON ARRAS ARRET ARRIS ARSON ARVOS ATLAS ATILT ATMAN ATMAS ATOLL ATOMY ATONY ATRIA ATTAR AUDAD AUGER AUGHT AURAE AURAR AURAS AURIC AURIS AVENS AVERS AVION AVISE AVISO AWAVE AVOWS AWAIT AWNED AWNER AYAHS AZIDE AZOTH BABOO BACON BAFFY BATTU BIGHT BIDET BUTYL BYWAY BESOT BESET BETEL BEZEL BILGE BILLY BIMBO BINGO BIPED BITER BITTY BLACK BLEAT BLIMP BLOGS BLOAT BOLUS BOOBY BOOTH BOOZE BORAX BOXER BRIBE BRINK BROOM BRUNT BUDDY BUGGY BULKY BUXOM BYLAW CADGE CAIRN CAJUN CALVE CAMPY CAPED CAPER CARAT CAROL CATTY CAVIL CEASE CHAFF CHALK CHAMP CHARD CHARY CHASE CHEAP CHEAT CHEEK CHIDE CHILI CHIME CHIVY CHOMP CHORE CHOSE CHUMP CHUNK CHURN CIRCA CIVET CLACK CLAIM CLANK CLAVE CLIME CLINK CLOWN CLUED COBRA COCKY CODON COILS COMFY COMMA CONCH CONDO CONIC COOTS COPED COUPE COVEY COZEN CRACK CREAK CREDO CREPE CRONE CROOK CROON CUBED CUBIC CUNNY CUPID CURED CURIA CURRY DAFFY DARER DATED DAUBS DEBAR DEBUG DECAL DECRY DEEDS DEFER DEIFY DEITY DELVE DEMON DETER DICEY DIGIT DILLY DIMLY DINGY DITTY DIVAN DIVER DIVVY DOGMA DONEE DOPEY DORKY DOTER DOTED DOWRY DOYEN DRABS DRAWN DREGS DROIT DRONE DROSS DUCHY DUCKY DUMPY DUPED DWELT EAGER EBONY EDGED EGRET ELIDE ELOPE ELUDE EMEND EMERY ENACT ENDUE ENEMA ENJOY ENNUI ENSUE ENTRY ENVOY EPOXY EVICT EXPEL EXTOL EXULT FABLE FAKED FAKER FALLS FAMED FARCE FATED FATTY FAUNA FAWNS FELON FEMUR FEUD FEWER FIAT FICHE FIFTY FIERY FILCH FILET FILMY FINER FINNY FIXER FIZZY FJORD FLACK FLAKY FLASH FLEA FLEET FLINT FLIT FLORA FLOUT FLOWN FLUFF FOLLY FORAY FORGO FORUM FOYER FRANC FRAT FRAY FREED FREER FRISK FRITZ FUDGE FUGUE FULLY FUMED FUMES FUNKY FURRY GAMUT GAUZY GAWKY GEEKY GIANT GIDDY GIMP GIRLY GIZMO GLAIR GLINT GLOAT GNOME GOLLY GOODY GOOSE GORGE GORMY GOUGE GREBE GROIN GROPE GROWL GRUEL GUILE GUMBO HAINT HALVE HANDY HAUTE HAWSE HAZEL HEADY HEARD HEART HEIST HENCE HERBS HERTZ HIKED HILLY HINDS HIPPY HITCH HOOPS HOPED HOPPY HORNY HOWDY HOVEL HUMUS HUNKY HUTCH HYDRA HYPER ICING IDENT IDIOM IDIOT ILIAC IMBUE IMPEL INEPT INFIX INLAY INSET IRATE IRONS ITCHY JAZZY JELLY JERKY JIBED JIFFY JINGO JIVED JOKEY JOLLY JOWLY JUICY JUMBO KAPPA KAYAK KEYED KITTY KNEEL LACEY LADEN LATHE LATTE LEAKY LEAPT LEFTY LEGER LETUP LIEGE LINER LIVID LLANO LOATH LOCAL LOOPY LOPED LOUPE LOVED LOVER LUCKY LUNGE LYING LYRIC MANGY MANGO MANLY MAPLE MARGE MAYBE MEATY MEDIC MELEE MERLE MERRY MESSY METAL MILKY MIRED MITRE MIMIC MOTIF MUCKY MULCH MUMMY NAPPY NEEDY NERDY NIPPY NITTY NOISY NOSEY NUDGE NUMBY NUTTY OFFAL OPTED ORACH ORGAN OUGHT PALLY PARKA PATSY PAWKY PEACH PHONE PHOTO PIGGY PINKY PINEY PIPPY PITHY PORKY POTTY POUTY POWER PSYCH PUDGY PUNKY PUSHY PYGMY QUASI RACER RALLY RATTY RAVEN REBBE ROWDY RUGBY RUNNY SASSY SATED SAUCY SAUNA SHAKY SHILL SHINY SHOAL SHOAT SHOWY SHUCK SILKY SIREN SISSY SIXTY SKATE SKULK SLAIN SLANG SLIMY SOFTY SOGGY SPASM SPINY SPREE SPURT SQUAD SQUAT SQUID STILE STUCK SUAVE SUITE SULKY SUNNY SUPER SWINE SWIRL TAFFY TANGY TASTY TEARY TESTY THICK THINE TIDAL TILDE TINNY TONIC TOWEL TACKY TACIT TAINT TAPIR TARDY TAUNT TEMPO THETA THROE THRUM TOADY TOPAZ TOWEL TRAMS TUBER TUMMY TWEAK TWILL TWINE TYING UNCUT UNDUE UNION VEGAN VIVID VOCAL WAFER WHALE WHIFF ZINGY ZIPPY ZAPPY`;
+
+// Load full dictionary on startup — cache in localStorage after first fetch
+(async function loadDictionary(){
+  // 1. Load fallback immediately so game works offline from the start
+  FALLBACK_WORDS.split(' ').forEach(w=>{if(w.length===5)VALID.add(w);});
+
+  // 2. Check localStorage cache
+  try{
+    const cached=localStorage.getItem('wg_dict_v2');
+    if(cached){cached.split(' ').forEach(w=>VALID.add(w));return;}
+  }catch(e){}
+
+  // 3. Try fetching full word list from dwyl (only works when served over http/https)
+  try{
+    const r=await fetch('https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt',{cache:'force-cache'});
+    if(!r.ok)throw 0;
+    const text=await r.text();
+    const words=text.split(/\r?\n/).map(w=>w.trim().toUpperCase()).filter(w=>w.length===5&&/^[A-Z]{5}$/.test(w));
+    words.forEach(w=>VALID.add(w));
+    try{localStorage.setItem('wg_dict_v2',[...VALID].join(' '));}catch(e){}
+  }catch(e){
+    // Fetch failed (offline/CORS) — fallback already loaded, ~1500 words available
+  }
+})();
+
+// ═══════════════════════════
+//  CODE ENCODE / DECODE
+//  Format: C1:<base64(name + "~" + word1 + "~" ... + word18)>
+// ═══════════════════════════
+function encodeCourse(name,words){
+  try{
+    const raw=[name.trim(),...words.map(w=>w.toUpperCase())].join('~');
+    return 'C1:'+btoa(unescape(encodeURIComponent(raw)));
+  }catch(e){return 'C1:'+btoa([name,...words].join('~'));}
+}
+function decodeCourse(code){
+  code=code.trim();
+  // Built-in
+  const bi=COURSES.find(c=>c.id===code);
+  if(bi)return{type:'builtin',course:bi};
+  // Custom
+  if(code.startsWith('C1:')){
+    try{
+      const raw=decodeURIComponent(escape(atob(code.slice(3))));
+      const parts=raw.split('~');
+      if(parts.length<19)throw 0;
+      const name=parts[0]||'Custom Course';
+      const words=parts.slice(1,19).map(w=>w.toUpperCase().replace(/[^A-Z]/g,'').slice(0,5));
+      if(words.some(w=>w.length!==5))throw 0;
+      return{type:'custom',name,words,code};
+    }catch(e){return null;}
+  }
+  return null;
+}
+
+// ═══════════════════════════
+//  GAME STATE
+// ═══════════════════════════
+let G=null;
+function mkState(course,isPractice){
+  return{courseId:course.id,courseName:course.name,isPractice:!!isPractice,isCustom:!!course.isCustom,customCode:course.customCode||null,words:[...course.words],flavors:course.flavors||Array(18).fill('').map((_,i)=>`Hole ${i+1} — A fresh challenge awaits.`),currentHole:0,scores:[],guesses:[],completed:false};
+}
+function saveG(){if(G)localStorage.setItem('wg_g',JSON.stringify(G))}
+function loadG(){try{const r=localStorage.getItem('wg_g');return r?JSON.parse(r):null}catch(e){return null}}
+
+// ═══════════════════════════
+//  SCORING
+// ═══════════════════════════
+function scoreInfo(s){
+  if(s===1)return{label:'Hole in One!',icon:'🏌️',color:'#e8c96d',vspar:-3};
+  if(s===2)return{label:'Eagle!',icon:'🦅',color:'#c9a84c',vspar:-2};
+  if(s===3)return{label:'Birdie!',icon:'🐦',color:'#c9a84c',vspar:-1};
+  if(s===4)return{label:'Par',icon:'✅',color:'#52b788',vspar:0};
+  if(s===5)return{label:'Bogey',icon:'🔴',color:'#e06060',vspar:1};
+  if(s===6)return{label:'Double Bogey',icon:'🟥',color:'#cc2020',vspar:2};
+  return{label:'Triple Bogey',icon:'💀',color:'#aa0000',vspar:3};
+}
+function totalVP(scores){return scores.reduce((a,s)=>a+scoreInfo(s).vspar,0)}
+function fmtVP(vp){return vp===0?'E':vp>0?`+${vp}`:`${vp}`}
+
+// ═══════════════════════════
+//  HOLE STATE
+// ═══════════════════════════
+let CG=[],curGuess='',holeActive=false,holeWord='',KS={};
+
+function startHole(){
+  holeWord=G.words[G.currentHole].toUpperCase();
+  CG=G.guesses[G.currentHole]?[...G.guesses[G.currentHole]]:[];
+  curGuess='';KS={};holeActive=true;
+  CG.forEach(g=>updateKS(g));
+  updateHeader();renderGrid();renderKB();
+  if(G.scores[G.currentHole]!==undefined){holeActive=false;showResult(G.scores[G.currentHole],false);}
+}
+function updateHeader(){
+  const h=G.currentHole+1;
+  document.getElementById('hole-number-display').textContent=`Hole ${h} of 18 · Par 4`;
+  document.getElementById('running-score-badge').textContent=fmtVP(totalVP(G.scores));
+  document.getElementById('sc-course-name').textContent=G.courseName;
+}
+
+// ═══════════════════════════
+//  GRID
+// ═══════════════════════════
+function renderGrid(){
+  const g=document.getElementById('game-grid');g.innerHTML='';
+  for(let r=0;r<6;r++){
+    const re=document.createElement('div');re.className='grid-row';re.id=`row-${r}`;
+    for(let c=0;c<5;c++){
+      const t=document.createElement('div');t.className='tile';t.id=`tile-${r}-${c}`;
+      if(r<CG.length){t.textContent=CG[r][c];t.setAttribute('data-state',evalGuess(CG[r])[c]);}
+      else if(r===CG.length&&c<curGuess.length){t.textContent=curGuess[c];t.classList.add('filled');}
+      re.appendChild(t);
     }
+    g.appendChild(re);
+  }
+}
+function updateRow(){
+  const r=CG.length;
+  for(let c=0;c<5;c++){
+    const t=document.getElementById(`tile-${r}-${c}`);if(!t)continue;
+    if(c<curGuess.length){t.textContent=curGuess[c];t.classList.add('filled');}
+    else{t.textContent='';t.classList.remove('filled');}
+  }
+}
 
-    // Friend requests collection
-    match /friendRequests/{reqId} {
-      // Only sender or recipient can read a request
-      allow read: if request.auth != null
-        && (request.auth.uid == resource.data.from
-        ||  request.auth.uid == resource.data.to);
-      // Only the sender can create (from must equal their uid)
-      allow create: if request.auth != null
-        && request.auth.uid == request.resource.data.from;
-      // Only the recipient can update status (accept / decline)
-      allow update: if request.auth != null
-        && request.auth.uid == resource.data.to;
+// ═══════════════════════════
+//  EVALUATE
+// ═══════════════════════════
+function evalGuess(guess){
+  const res=Array(5).fill('absent'),wa=holeWord.split(''),ga=guess.split(''),used=Array(5).fill(false);
+  for(let i=0;i<5;i++)if(ga[i]===wa[i]){res[i]='correct';used[i]=true;}
+  for(let i=0;i<5;i++){
+    if(res[i]==='correct')continue;
+    for(let j=0;j<5;j++)if(!used[j]&&ga[i]===wa[j]){res[i]='present';used[j]=true;break;}
+  }
+  return res;
+}
+function updateKS(guess){
+  const res=evalGuess(guess),p={correct:3,present:2,absent:1};
+  guess.split('').forEach((l,i)=>{if((p[res[i]]||0)>(p[KS[l]]||0))KS[l]=res[i];});
+}
+
+// ═══════════════════════════
+//  KEYBOARD
+// ═══════════════════════════
+const KBROWS=[['Q','W','E','R','T','Y','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['ENTER','Z','X','C','V','B','N','M','⌫']];
+function renderKB(){
+  const kb=document.getElementById('keyboard');kb.innerHTML='';
+  KBROWS.forEach(row=>{
+    const re=document.createElement('div');re.className='kb-row';
+    row.forEach(k=>{
+      const b=document.createElement('button');
+      b.className='key'+(k.length>1?' wide':'');b.textContent=k;b.dataset.key=k;
+      if(KS[k])b.setAttribute('data-state',KS[k]);
+      b.addEventListener('click',()=>handleKey(k));re.appendChild(b);
+    });
+    kb.appendChild(re);
+  });
+}
+function updateKB(){document.querySelectorAll('.key').forEach(b=>{if(KS[b.dataset.key])b.setAttribute('data-state',KS[b.dataset.key]);})}
+
+// ═══════════════════════════
+//  INPUT
+// ═══════════════════════════
+document.addEventListener('keydown',e=>{
+  if(!document.getElementById('game-screen').classList.contains('active'))return;
+  if(e.key==='Enter')handleKey('ENTER');
+  else if(e.key==='Backspace')handleKey('⌫');
+  else if(/^[a-zA-Z]$/.test(e.key))handleKey(e.key.toUpperCase());
+});
+function handleKey(key){
+  if(!holeActive)return;
+  if(document.getElementById('hole-result-overlay').classList.contains('visible'))return;
+  if(document.getElementById('scorecard-panel').classList.contains('visible'))return;
+  if(key==='⌫'){if(curGuess.length>0){curGuess=curGuess.slice(0,-1);updateRow();}return;}
+  if(key==='ENTER'){submitGuess();return;}
+  if(/^[A-Z]$/.test(key)&&curGuess.length<5){curGuess+=key;updateRow();}
+}
+function submitGuess(){
+  if(curGuess.length!==5){toast('Not enough letters');shakeRow(CG.length);return;}
+  if(!VALID.has(curGuess)&&curGuess!==holeWord){toast('Not a word');shakeRow(CG.length);return;}
+  const ri=CG.length;
+  CG.push(curGuess);G.guesses[G.currentHole]=[...CG];
+  const res=evalGuess(curGuess);updateKS(curGuess);
+  animReveal(ri,curGuess,res,()=>{
+    updateKB();
+    const won=res.every(r=>r==='correct'),fail=CG.length>=6&&!won;
+    if(won||fail){
+      holeActive=false;
+      const s=won?CG.length:7;G.scores[G.currentHole]=s;saveG();
+      if(won&&s<=3)spawnConfetti(s===1?120:s===2?80:40);
+      setTimeout(()=>showResult(s,true),600);
+    }else{curGuess='';updateRow();saveG();}
+  });
+  curGuess='';updateRow();
+}
+function animReveal(row,guess,res,cb){
+  for(let c=0;c<5;c++){
+    const t=document.getElementById(`tile-${row}-${c}`);if(!t)continue;
+    setTimeout(()=>{
+      t.classList.add('flipping');
+      setTimeout(()=>{
+        t.setAttribute('data-state',res[c]);t.classList.remove('flipping');
+        if(c===4){
+          if(res.every(r=>r==='correct')){for(let i=0;i<5;i++)setTimeout(()=>{const tt=document.getElementById(`tile-${row}-${i}`);if(tt)tt.classList.add('bounce');},i*80);}
+          if(cb)setTimeout(cb,300);
+        }
+      },250);
+    },c*120);
+  }
+}
+function shakeRow(r){for(let c=0;c<5;c++){const t=document.getElementById(`tile-${r}-${c}`);if(t){t.classList.remove('shake');void t.offsetWidth;t.classList.add('shake');}}}
+
+// ═══════════════════════════
+//  HOLE RESULT
+// ═══════════════════════════
+function showResult(s,isNew){
+  const info=scoreInfo(s);
+  const ic=document.getElementById('result-icon');
+  ic.textContent=info.icon;ic.style.animation='none';void ic.offsetWidth;ic.style.animation='';
+  document.getElementById('result-label').textContent=info.label;
+  document.getElementById('result-label').style.color=info.color;
+  document.getElementById('result-score-text').textContent=s<=6?`${s} guess${s!==1?'es':''} · ${fmtVP(info.vspar)}`:'Failed · +3';
+  document.getElementById('result-word').textContent=holeWord;
+  document.getElementById('result-next-btn').textContent=G.currentHole>=17?'🏆 View Final Score':'Next Hole →';
+  document.getElementById('hole-result-overlay').classList.add('visible');
+}
+function nextHole(){
+  document.getElementById('hole-result-overlay').classList.remove('visible');
+  if(G.currentHole>=17){G.completed=true;saveG();showFinal();return;}
+  G.currentHole++;saveG();startHole();
+}
+
+// ═══════════════════════════
+//  SCORECARD
+// ═══════════════════════════
+function toggleScorecard(){
+  const p=document.getElementById('scorecard-panel'),v=p.classList.contains('visible');
+  if(!v)renderSC();p.classList.toggle('visible',!v);
+}
+function renderSC(cid='scorecard-content'){
+  const el=document.getElementById(cid);if(!el)return;
+  const makeT=(s,e)=>{
+    let h=`<table class="scorecard-table"><thead><tr><th>HOLE</th>`;
+    for(let i=s;i<=e;i++)h+=`<th>${i}</th>`;
+    h+=`<th>TOT</th></tr><tr><th style="color:var(--gray-mid)">PAR</th>`;
+    for(let i=s;i<=e;i++)h+=`<td style="color:var(--gray-mid);font-size:11px">4</td>`;
+    h+=`<td style="color:var(--gray-mid)">${(e-s+1)*4}</td></tr></thead><tbody><tr><td style="color:var(--gray-mid);font-size:10px">YOU</td>`;
+    let rt=0;
+    for(let i=s;i<=e;i++){
+      const sc=G.scores[i-1];
+      if(sc===undefined){h+=`<td class="score-cell-pending">—</td>`;continue;}
+      const vp=scoreInfo(sc).vspar;rt+=vp;
+      let cl='score-cell-par';
+      if(vp<=-2)cl='score-cell-eagle';else if(vp===-1)cl='score-cell-birdie';
+      else if(vp===1)cl='score-cell-bogey';else if(vp===2)cl='score-cell-double';else if(vp>=3)cl='score-cell-triple';
+      h+=`<td class="${cl}">${sc===7?'X':sc}</td>`;
     }
+    const sg=rt>0?'+':'';
+    h+=`<td style="font-weight:700;color:${rt<0?'var(--gold)':rt>0?'#e06060':'var(--green-light)'}">${sg}${rt}</td>`;
+    return h+'</tr></tbody></table>';
+  };
+  const vp=totalVP(G.scores);
+  el.innerHTML=makeT(1,9)+makeT(10,18)+`<div class="total-vs-par">Round Total: <strong>${fmtVP(vp)}</strong> ${G.scores.length===18?'· Complete':`· After ${G.scores.length} Holes`}</div>`;
+}
 
-    // Matches
-    match /matches/{mid} {
-      allow read, write: if request.auth != null
-        && (resource == null
-        ||  request.auth.uid == resource.data.player1
-        ||  request.auth.uid == resource.data.player2);
+// ═══════════════════════════
+//  FINAL SCREEN
+// ═══════════════════════════
+function showFinal(){
+  showScreen('final-screen');
+  const vp=totalVP(G.scores);
+  document.getElementById('final-course-name').textContent=`⛳ ${G.courseName}`;
+  document.getElementById('final-big-score').textContent=fmtVP(vp);
+  document.getElementById('final-big-score').style.color=vp<0?'var(--gold-light)':vp===0?'var(--green-light)':'#e06060';
+  const st=G.scores.reduce((a,s)=>a+(s===7?7:s),0);
+  document.getElementById('final-score-label').textContent=`${st} strokes · ${vp===0?'even par':vp>0?`${vp} over par`:`${Math.abs(vp)} under par`}`;
+  const code=G.isCustom&&G.customCode?G.customCode:(!G.isPractice?G.courseId:'PRACTICE ROUND');
+  document.getElementById('final-course-code').textContent=code;
+  renderSC('final-scorecard-content');
+}
+function copyShareText(){
+  const vp=totalVP(G.scores);
+  const lines=G.scores.map((s,i)=>`Hole ${i+1}: ${scoreInfo(s).label} ${scoreInfo(s).icon}`);
+  const code=G.isCustom&&G.customCode?`Play this course: ${G.customCode}`:!G.isPractice?`Play this course: ${G.courseId}`:'(Practice Round)';
+  const txt=`⛳ Word Golf — ${G.courseName}\n${lines.slice(0,9).join('  ')}\n${lines.slice(9).join('  ')}\nFinal Score: ${fmtVP(vp)}\n${code}`;
+  navigator.clipboard.writeText(txt).then(()=>toast('Copied to clipboard!')).catch(()=>toast('Copy failed — try long-pressing'));
+}
+function copyCode(){
+  const code=G.isCustom&&G.customCode?G.customCode:!G.isPractice?G.courseId:null;
+  if(!code){toast('Practice rounds have no code');return;}
+  navigator.clipboard.writeText(code).then(()=>toast('Code copied!')).catch(()=>toast('Copy failed'));
+}
+
+// ═══════════════════════════
+//  BUILDER
+// ═══════════════════════════
+function openBuilder(){showScreen('builder-screen');buildBuilderUI();}
+function buildBuilderUI(){
+  const g=document.getElementById('hole-builder-grid');g.innerHTML='';
+  for(let i=0;i<18;i++){
+    const row=document.createElement('div');row.className='hole-builder-row';
+    row.innerHTML=`<span class="hole-num-label">H${i+1}</span><input class="hole-word-input" id="bw${i}" maxlength="5" placeholder="WORD?" autocomplete="off" autocorrect="off" spellcheck="false"><span class="hole-word-status" id="bs${i}">⬜</span>`;
+    g.appendChild(row);
+    const inp=row.querySelector('.hole-word-input');
+    inp.addEventListener('input',()=>{inp.value=inp.value.toUpperCase().replace(/[^A-Z]/g,'');validateBW(i);});
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter'){const n=document.getElementById(`bw${i+1}`);if(n)n.focus();}});
+  }
+  updateBuilderProgress();
+}
+function validateBW(idx){
+  const inp=document.getElementById(`bw${idx}`),st=document.getElementById(`bs${idx}`);
+  const v=inp.value.trim().toUpperCase();
+  if(!v){st.textContent='⬜';}
+  else if(v.length<5){st.textContent='✏️';}
+  else if(!VALID.has(v)){st.textContent='❓';} // unknown but accepted
+  else{st.textContent='✅';}
+  updateBuilderProgress();
+}
+function updateBuilderProgress(){
+  let filled=0,valid=0;
+  for(let i=0;i<18;i++){
+    const v=(document.getElementById(`bw${i}`)?.value||'').trim().toUpperCase();
+    if(v.length===5){filled++;valid++;} // count any 5-letter word as valid for launch
+  }
+  document.getElementById('builder-progress').innerHTML=`${filled} of 18 holes filled · <span>${valid} ready</span>`;
+  const ok=valid===18;
+  const lb=document.getElementById('builder-launch-btn');
+  lb.disabled=!ok;lb.style.opacity=ok?'1':'.5';
+}
+function fillRemainingRandom(){
+  const used=new Set();
+  for(let i=0;i<18;i++){const v=(document.getElementById(`bw${i}`)?.value||'').trim().toUpperCase();if(v.length===5)used.add(v);}
+  const avail=POOL.filter(w=>!used.has(w)).sort(()=>Math.random()-.5);
+  let pi=0;
+  for(let i=0;i<18;i++){
+    const inp=document.getElementById(`bw${i}`);
+    if(inp.value.trim().length===5)continue;
+    if(pi<avail.length){inp.value=avail[pi++];validateBW(i);}
+  }
+}
+function launchCustomCourse(){
+  const words=[];
+  for(let i=0;i<18;i++){
+    const v=(document.getElementById(`bw${i}`)?.value||'').trim().toUpperCase();
+    if(v.length!==5){toast(`Hole ${i+1} needs a 5-letter word`);return;}
+    words.push(v);
+  }
+  const name=document.getElementById('builder-course-name').value.trim()||'Custom Course';
+  const customCode=encodeCourse(name,words);
+  const saved=loadG();
+  if(saved&&!saved.completed){if(!confirm('Abandon current round and start this one?'))return;}
+  const course={id:'CUST',name,description:'Custom Course',words,flavors:words.map((_,i)=>`Hole ${i+1} — Your course, your words.`),isCustom:true,customCode};
+  G=mkState(course,false);G.isCustom=true;G.customCode=customCode;
+  saveG();showScreen('game-screen');startHole();
+  toast('Course launched! Share the code after your round 🎨');
+}
+
+// ═══════════════════════════
+//  NAVIGATION
+// ═══════════════════════════
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
+function goHome(){showScreen('home-screen');initHome();}
+function initHome(){
+  const saved=loadG();
+  const rs=document.getElementById('resume-section');
+  if(saved&&!saved.completed){
+    rs.style.display='block';
+    document.getElementById('resume-text-main').textContent=`${saved.courseName} — Hole ${saved.currentHole+1}`;
+    document.getElementById('resume-text-sub').textContent=`Score: ${fmtVP(totalVP(saved.scores))} after ${saved.scores.length} holes`;
+  }else rs.style.display='none';
+  const cl=document.getElementById('course-list');cl.innerHTML='';
+  COURSES.forEach(c=>{const d=document.createElement('div');d.className='course-card';d.innerHTML=`<div class="course-name">${c.name}</div><div class="course-meta">${c.description}</div><span class="course-arrow">→</span>`;d.onclick=()=>startCourse(c,false);cl.appendChild(d);});
+}
+function resumeRound(){const s=loadG();if(!s)return;G=s;showScreen('game-screen');startHole();}
+function startCourse(course,isPractice){
+  const s=loadG();
+  if(s&&!s.completed){if(!confirm('Start a new round? Current round will be abandoned.'))return;}
+  G=mkState(course,isPractice);saveG();showScreen('game-screen');startHole();
+}
+function startPracticeRound(){
+  const s=loadG();
+  if(s&&!s.completed){if(!confirm('Start a practice round? Current round will be abandoned.'))return;}
+  const words=[...POOL].sort(()=>Math.random()-.5).slice(0,18);
+  const c={id:'PRAC',name:'Practice Round',description:'Random 18',words,flavors:words.map((_,i)=>`Hole ${i+1} — A fresh challenge awaits.`)};
+  G=mkState(c,true);saveG();showScreen('game-screen');startHole();
+}
+function loadCourseCode(){
+  const raw=document.getElementById('course-code-input').value.trim().toUpperCase();
+  if(!raw){toast('Enter a course code');return;}
+  const dec=decodeCourse(raw);
+  if(!dec){toast('Invalid course code — check and try again');return;}
+  const s=loadG();
+  let course;
+  if(dec.type==='builtin'){course=dec.course;}
+  else{course={id:'CUST_LOADED',name:dec.name,description:'Shared Custom Course',words:dec.words,flavors:dec.words.map((_,i)=>`Hole ${i+1} — A shared challenge.`),isCustom:true,customCode:raw};}
+  if(s&&!s.completed){if(!confirm(`Load "${course.name}"? Your current round will be abandoned.`))return;}
+  G=mkState(course,false);
+  if(course.isCustom){G.isCustom=true;G.customCode=raw;}
+  saveG();document.getElementById('course-code-input').value='';
+  showScreen('game-screen');startHole();
+  toast(`Playing: ${course.name}`);
+}
+
+// ═══════════════════════════
+//  TOAST
+// ═══════════════════════════
+function toast(msg){const c=document.getElementById('toast-container');const t=document.createElement('div');t.className='toast';t.textContent=msg;c.appendChild(t);setTimeout(()=>t.remove(),2100);}
+
+// ═══════════════════════════
+//  CONFETTI
+// ═══════════════════════════
+function spawnConfetti(count){
+  const c=document.getElementById('confetti-container');
+  const colors=['#c9a84c','#e8c96d','#52b788','#f7eac0','#fff','#4a7c59','#ffd700'];
+  for(let i=0;i<count;i++){
+    const p=document.createElement('div');p.className='confetti-piece';
+    p.style.cssText=`left:${Math.random()*100}vw;background:${colors[Math.floor(Math.random()*colors.length)]};width:${6+Math.random()*8}px;height:${6+Math.random()*8}px;animation-duration:${1.5+Math.random()*2.5}s;animation-delay:${Math.random()*.8}s`;
+    c.appendChild(p);setTimeout(()=>p.remove(),4000);
+  }
+}
+
+// ═══════════════════════════
+//  INIT
+// ═══════════════════════════
+// NOTE: initHome() is now called by onAuthStateChanged -> navTo('play')
+// after Firebase confirms the user is signed in. Do NOT call it here.
+
+// Handle URL hash deep-link (e.g. shared via word-golf.html#C1:...)
+(function(){
+  const h=window.location.hash.slice(1);
+  if(h&&h.startsWith('C1:')){
+    // Wait for auth to settle before loading course code
+    const tryLoad = () => {
+      const inp = document.getElementById('course-code-input');
+      if (inp) { inp.value = h.toUpperCase(); setTimeout(()=>loadCourseCode(), 300); }
+      else setTimeout(tryLoad, 200);
+    };
+    setTimeout(tryLoad, 800);
+    history.replaceState(null,'',window.location.pathname);
+  }
+})();
+
+// ═══════════════════════════════════════════
+//  ▼▼▼  PASTE YOUR FIREBASE CONFIG HERE  ▼▼▼
+// ═══════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyAitaGQbW_eVedEERuViiolwmT1Zk79-kQ",
+  authDomain: "word-golf-f3baa.firebaseapp.com",
+  projectId: "word-golf-f3baa",
+  storageBucket: "word-golf-f3baa.firebasestorage.app",
+  messagingSenderId: "900326965927",
+  appId: "1:900326965927:web:0a659af5e7a5d2f2b25182",
+  measurementId: "G-WWDDSX6XJM"
+};
+// ═══════════════════════════════════════════
+
+// Validate config before initializing
+(function checkConfig() {
+  const missing = Object.values(firebaseConfig).some(v => !v || v.startsWith('YOUR_'));
+  if (missing) {
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('auth-screen').classList.add('active');
+      const box = document.querySelector('.auth-box');
+      if (box) {
+        const warn = document.createElement('div');
+        warn.style.cssText = 'background:rgba(192,57,43,.15);border:1px solid rgba(192,57,43,.4);border-radius:8px;padding:14px;margin-bottom:16px;font-family:Courier Prime,monospace;font-size:12px;color:#e06060;line-height:1.6';
+        warn.innerHTML = '⚠️ <strong>Firebase not configured.</strong><br>Open this HTML file, find the <code>firebaseConfig</code> block near the top of the &lt;script&gt;, and paste in your credentials from the Firebase Console.';
+        box.insertBefore(warn, box.firstChild);
+      }
+    });
+  }
+})();
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db   = firebase.firestore();
+
+// ─── AUTH STATE ───────────────────────────────────────────
+let currentUser=null, currentUserDoc=null, unsubMatches=null, unsubUserDoc=null;
+
+auth.onAuthStateChanged(async user => {
+  document.getElementById('loading-screen').style.display = 'none';
+  if (user) {
+    currentUser = user;
+    await ensureUserDoc(user);
+    subscribeUserDoc(user.uid);
+    subscribeMatches(user.uid);
+    document.getElementById('bottom-nav').style.display = 'flex';
+    document.getElementById('home-display-name').textContent = currentUserDoc?.displayName || user.email;
+    navTo('play');
+  } else {
+    currentUser = null; currentUserDoc = null;
+    if (unsubMatches) { unsubMatches(); unsubMatches = null; }
+    if (unsubUserDoc) { unsubUserDoc(); unsubUserDoc = null; }
+    document.getElementById('bottom-nav').style.display = 'none';
+    showScreen('auth-screen');
+  }
+});
+
+async function ensureUserDoc(user) {
+  // If doRegister already populated currentUserDoc, use it — avoid duplicate writes
+  if (currentUserDoc && currentUserDoc.email === user.email) return;
+  try {
+    const ref  = db.collection('users').doc(user.uid);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      const name = user.displayName || user.email.split('@')[0];
+      const doc  = { displayName: name, email: user.email, friends: [], friendRequests: [] };
+      await ref.set(doc);
+      currentUserDoc = doc;
+    } else {
+      currentUserDoc = snap.data();
+      // Backfill displayName if missing (older accounts)
+      if (!currentUserDoc.displayName && user.displayName) {
+        currentUserDoc.displayName = user.displayName;
+        await ref.update({ displayName: user.displayName });
+      }
+    }
+  } catch(e) {
+    console.error('ensureUserDoc failed:', e.message);
+    // Fall back to a minimal local doc so the app still loads
+    if (!currentUserDoc) {
+      currentUserDoc = {
+        displayName: user.displayName || user.email.split('@')[0],
+        email: user.email, friends: [], friendRequests: []
+      };
     }
   }
+}
+
+function subscribeUserDoc(uid) {
+  if (unsubUserDoc) unsubUserDoc();
+  unsubUserDoc = db.collection('users').doc(uid).onSnapshot(snap => {
+    if (snap.exists) {
+      currentUserDoc = snap.data();
+      const el = document.getElementById('home-display-name');
+      if (el) el.textContent = currentUserDoc.displayName || currentUser?.email || '—';
+      updateFriendRequestBadge();
+      if (document.getElementById('friends-screen').classList.contains('active')) refreshFriendsScreen();
+    }
+  });
+}
+
+function subscribeMatches(uid) {
+  if (unsubMatches) unsubMatches();
+  let m1 = [], m2 = [];
+  const merge = () => renderMatchesList([...m1, ...m2]);
+  const u1 = db.collection('matches').where('player1','==',uid).onSnapshot(s => { m1 = s.docs.map(d=>({id:d.id,...d.data()})); merge(); });
+  const u2 = db.collection('matches').where('player2','==',uid).onSnapshot(s => { m2 = s.docs.map(d=>({id:d.id,...d.data()})); merge(); });
+  unsubMatches = () => { u1(); u2(); };
 }
 
 // ─── AUTH ACTIONS ─────────────────────────────────────────
@@ -105,7 +1253,7 @@ async function doRegister() {
     // Pre-populate currentUserDoc so onAuthStateChanged skips the Firestore create
     // (ensureUserDoc checks snap.exists, but the write below races with it — 
     //  setting currentUserDoc here ensures the race is harmless)
-    currentUserDoc = { displayName: name, email, friends: [] };
+    currentUserDoc = { displayName: name, email, friends: [], friendRequests: [] };
     // Write user document — wrapped separately so auth errors vs Firestore errors are distinct
     try {
       await db.collection('users').doc(cred.user.uid).set(currentUserDoc);
@@ -168,9 +1316,7 @@ async function updateFriendRequestBadge() {
   if (!currentUser) return;
   try {
     const snap = await db.collection('friendRequests')
-      .where('to', '==', currentUser.uid)
-      .where('status', '==', 'pending')
-      .get();
+      .where('to','==',currentUser.uid).where('status','==','pending').get();
     const b = document.getElementById('friends-badge');
     if (!snap.empty) { b.textContent = snap.size; b.style.display = 'block'; }
     else b.style.display = 'none';
@@ -202,48 +1348,33 @@ async function searchFriends() {
 }
 async function sendFriendRequest(toUid, toName) {
   try {
-    // Check for existing pending request
     const existing = await db.collection('friendRequests')
-      .where('from', '==', currentUser.uid)
-      .where('to', '==', toUid)
-      .where('status', '==', 'pending')
-      .limit(1).get();
+      .where('from','==',currentUser.uid).where('to','==',toUid)
+      .where('status','==','pending').limit(1).get();
     if (!existing.empty) { toast('Request already sent'); return; }
-    // Write request doc — sender only writes docs where from == their own uid
     await db.collection('friendRequests').add({
       from: currentUser.uid,
       fromName: currentUserDoc?.displayName || currentUser.email,
-      to: toUid,
-      status: 'pending',
+      to: toUid, status: 'pending',
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     toast(`Friend request sent to ${toName}! 🤝`);
     document.getElementById('friend-search-results').innerHTML = '';
     document.getElementById('friend-search-input').value = '';
-  } catch(e) {
-    console.error('sendFriendRequest error:', e);
-    toast('Could not send request — check Firestore rules');
-  }
+  } catch(e) { console.error('sendFriendRequest:', e); toast('Could not send request'); }
 }
 async function acceptFriendRequest(fromUid, requestId) {
   try {
-    // 1. Mark the request doc as accepted
     await db.collection('friendRequests').doc(requestId).update({ status: 'accepted' });
-    // 2. Add the sender to OUR friends list (we own our doc)
     await db.collection('users').doc(currentUser.uid).update({
       friends: firebase.firestore.FieldValue.arrayUnion(fromUid)
     });
-    // 3. Add US to the SENDER's friends list.
-    //    The Firestore rule allows this when the acceptedBy field matches our uid.
     await db.collection('users').doc(fromUid).update({
       friends: firebase.firestore.FieldValue.arrayUnion(currentUser.uid)
     });
     toast('Friend added! 🤝');
     refreshFriendsScreen();
-  } catch(e) {
-    console.error('acceptFriendRequest error:', e);
-    toast('Could not accept — check Firestore rules are updated');
-  }
+  } catch(e) { console.error('acceptFriendRequest:', e); toast('Could not accept — check Firestore rules'); }
 }
 async function declineFriendRequest(fromUid, requestId) {
   try {
@@ -253,15 +1384,12 @@ async function declineFriendRequest(fromUid, requestId) {
 }
 async function refreshFriendsScreen() {
   if (!currentUser) return;
-
-  // ── Incoming pending friend requests ──────────────────────────────────
   const reqSec  = document.getElementById('friend-requests-section');
   const reqList = document.getElementById('friend-requests-list');
+  // Incoming pending requests
   try {
     const reqSnap = await db.collection('friendRequests')
-      .where('to', '==', currentUser.uid)
-      .where('status', '==', 'pending')
-      .get();
+      .where('to','==',currentUser.uid).where('status','==','pending').get();
     if (!reqSnap.empty) {
       reqSec.style.display = 'block'; reqList.innerHTML = '';
       reqSnap.forEach(doc => {
@@ -276,7 +1404,6 @@ async function refreshFriendsScreen() {
           </div>`;
         reqList.appendChild(card);
       });
-      // Update badge
       const badge = document.getElementById('friends-badge');
       badge.textContent = reqSnap.size; badge.style.display = 'block';
     } else {
@@ -285,15 +1412,14 @@ async function refreshFriendsScreen() {
     }
   } catch(e) { console.error('Loading friend requests failed:', e); }
 
-  // ── Friends list ───────────────────────────────────────────────────────
-  const fl = document.getElementById('friends-list');
-  // Re-fetch our own doc to get latest friends array
+  // Re-fetch own doc to get latest friends array
   try {
     const mySnap = await db.collection('users').doc(currentUser.uid).get();
     if (mySnap.exists) currentUserDoc = mySnap.data();
   } catch(e) {}
 
   const friends = currentUserDoc?.friends || [];
+  const fl = document.getElementById('friends-list');
   if (!friends.length) {
     fl.innerHTML = '<div class="empty-state" style="padding:14px 0"><span class="empty-state-icon">🤝</span><div class="empty-state-text">No friends yet</div><div class="empty-state-sub">Search above to add players</div></div>';
     return;
@@ -301,7 +1427,6 @@ async function refreshFriendsScreen() {
   fl.innerHTML = '';
   for (const uid of friends) {
     try {
-      // Only fetch displayName — do not expose private fields
       const snap = await db.collection('users').doc(uid).get();
       const name = snap.exists ? (snap.data().displayName || uid) : uid;
       const card = document.createElement('div'); card.className = 'friend-card';
@@ -336,6 +1461,23 @@ async function renderMatchesList(matches) {
     const course = COURSES.find(c=>c.id===match.courseId) || {name: match.courseId};
     let oppName = 'Opponent';
     try { const snap = await db.collection('users').doc(oppU).get(); if (snap.exists) oppName = snap.data().displayName; } catch(e) {}
+    // Build mini scorecard rows
+    const makeScoreRow = (scores, label) => {
+      let row = `<div style="display:flex;gap:3px;align-items:center;margin-top:6px">
+        <div style="font-family:monospace;font-size:9px;color:var(--gray-mid);width:26px;flex-shrink:0">${label}</div>`;
+      for (let i=0;i<18;i++) {
+        const s = scores[i];
+        let color = 'rgba(255,255,255,.1)';
+        let txt = '·';
+        if (s != null) {
+          const vp = scoreInfo(s).vspar;
+          txt = s === 7 ? 'X' : String(s);
+          color = vp <= -1 ? 'rgba(201,168,76,.6)' : vp === 0 ? 'rgba(82,183,136,.5)' : 'rgba(224,96,96,.5)';
+        }
+        row += `<div style="width:12px;height:16px;border-radius:2px;background:${color};display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:8px;color:#fff;flex-shrink:0">${txt}</div>`;
+      }
+      return row + '</div>';
+    };
     const card = document.createElement('div'); card.className = 'match-card';
     card.innerHTML = `
       <div class="match-card-header">
@@ -355,8 +1497,12 @@ async function renderMatchesList(matches) {
           <div class="match-player-holes">${oppH}/18 holes</div>
         </div>
       </div>
-      ${match.status==='complete' ? `<div class="winner-banner"><div class="winner-title">${match.winner===currentUser.uid?'🏆 You win!':(match.winner==='tie'?'🤝 Tie game!':'💀 '+oppName+' wins')}</div></div>` : ''}`;
-    if (match.status === 'active') card.onclick = () => openMatchGame(match.id, match, oppU, oppName);
+      ${makeScoreRow(myS, 'You')}
+      ${makeScoreRow(oppS, oppName.split(' ')[0])}
+      ${match.status==='complete' ? `<div class="winner-banner" style="margin-top:10px"><div class="winner-title">${match.winner===currentUser.uid?'🏆 You win!':(match.winner==='tie'?'🤝 Tie game!':'💀 '+oppName+' wins')}</div></div>` : ''}
+      ${match.status==='active' ? `<div style="text-align:center;margin-top:10px;font-family:'Courier Prime',monospace;font-size:11px;color:var(--gold);letter-spacing:1px">TAP TO PLAY →</div>` : ''}`;
+    // Both active AND complete matches are tappable (to view scorecard)
+    card.onclick = () => openMatchGame(match.id, match, oppU, oppName);
     container.appendChild(card);
   }
 }
@@ -397,13 +1543,20 @@ async function openMatchGame(matchId, matchData, oppU, oppName) {
   activeMatchOpponentName = oppName; opponentUid = oppU;
   const course = COURSES.find(c=>c.id===matchData.courseId) || COURSES[0];
   const myScores = (matchData.scores && matchData.scores[currentUser.uid]) || Array(18).fill(null);
+  // Find the first unplayed hole
   let nextHole = myScores.findIndex(s => s === null);
-  if (nextHole === -1) nextHole = 17;
+  if (nextHole === -1) nextHole = 17; // all done, show last hole
+  // Restore any saved guesses from localStorage for in-progress holes
+  let savedGuesses = Array(18).fill(null).map(() => []);
+  try {
+    const saved = localStorage.getItem('wg_match_guesses_' + matchId);
+    if (saved) savedGuesses = JSON.parse(saved);
+  } catch(e) {}
   MG = {
     courseId: course.id, courseName: course.name,
     words: [...course.words], currentHole: nextHole,
     scores: myScores.map(s => s === null ? undefined : s),
-    guesses: Array(18).fill(null).map(() => []),
+    guesses: savedGuesses,
     completed: myScores.every(s => s !== null)
   };
   updateMatchOppBar();
@@ -424,20 +1577,27 @@ function updateMatchOppBar() {
 
 async function saveMatchHoleScore(holeIdx, score) {
   if (!activeMatchId || !currentUser) return;
-  const key = `scores.${currentUser.uid}.${holeIdx}`;
-  const update = {}; update[key] = score;
-  await db.collection('matches').doc(activeMatchId).update(update);
-  const snap = await db.collection('matches').doc(activeMatchId).get();
-  activeMatchData = snap.data();
-  const myS  = activeMatchData.scores[currentUser.uid] || [];
-  const oppS = activeMatchData.scores[opponentUid] || [];
-  if (myS.every(s=>s!==null) && oppS.every(s=>s!==null)) {
-    const myVP  = myS.reduce((a,s)=>a+scoreInfo(s).vspar, 0);
-    const oppVP = oppS.reduce((a,s)=>a+scoreInfo(s).vspar, 0);
-    const winner = myVP < oppVP ? currentUser.uid : myVP > oppVP ? opponentUid : 'tie';
-    await db.collection('matches').doc(activeMatchId).update({ status: 'complete', winner });
-    if (winner === currentUser.uid) spawnConfetti(60);
-  }
+  try {
+    const key = `scores.${currentUser.uid}.${holeIdx}`;
+    const update = {}; update[key] = score;
+    await db.collection('matches').doc(activeMatchId).update(update);
+    // Re-fetch to get latest state (opponent may have scored too)
+    const snap = await db.collection('matches').doc(activeMatchId).get();
+    if (!snap.exists) return;
+    activeMatchData = snap.data();
+    // Update opponent bar with latest opponent score
+    updateMatchOppBar();
+    const myS  = activeMatchData.scores[currentUser.uid] || [];
+    const oppS = activeMatchData.scores[opponentUid] || [];
+    // Check if both players have finished all 18 holes
+    if (myS.every(s=>s!==null) && oppS.every(s=>s!==null)) {
+      const myVP  = myS.reduce((a,s)=>a+scoreInfo(s).vspar, 0);
+      const oppVP = oppS.reduce((a,s)=>a+scoreInfo(s).vspar, 0);
+      const winner = myVP < oppVP ? currentUser.uid : myVP > oppVP ? opponentUid : 'tie';
+      await db.collection('matches').doc(activeMatchId).update({ status: 'complete', winner });
+      if (winner === currentUser.uid) spawnConfetti(60);
+    }
+  } catch(e) { console.error('saveMatchHoleScore:', e); }
 }
 
 function exitMatchGame() { showScreen('matches-screen'); activeMatchId=null; activeMatchData=null; MG=null; }
@@ -518,6 +1678,8 @@ function submitMatchGuess() {
   if (!VALID.has(mCurGuess) && mCurGuess!==mHoleWord) { toast('Not a word'); shakeMatchRow(MCG.length); return; }
   const ri = MCG.length;
   MCG.push(mCurGuess); MG.guesses[MG.currentHole]=[...MCG];
+  // Persist guesses locally so the hole can be resumed if the app is closed
+  try { localStorage.setItem('wg_match_guesses_' + activeMatchId, JSON.stringify(MG.guesses)); } catch(e) {}
   const res = evalMGuess(mCurGuess); updateMKS(mCurGuess);
   animMatchReveal(ri, mCurGuess, res, () => {
     updateMatchKB();
@@ -527,6 +1689,8 @@ function submitMatchGuess() {
       const s = won ? MCG.length : 7;
       MG.scores[MG.currentHole] = s;
       saveMatchHoleScore(MG.currentHole, s);
+      // Clear saved guesses for this match now that hole is complete
+      try { localStorage.removeItem('wg_match_guesses_' + activeMatchId); } catch(e) {}
       const vp = MG.scores.filter(x=>x!==undefined).reduce((a,x)=>a+scoreInfo(x).vspar, 0);
       document.getElementById('match-running-score-badge').textContent = fmtVP(vp);
       if (won && s<=3) spawnConfetti(s===1?120:s===2?80:40);
