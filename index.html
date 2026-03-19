@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Word Golf">
@@ -74,7 +74,8 @@
   --brown:#7c5c3a; --gray-light:#d4cfc6; --gray-mid:#8a8278; --gray-dark:#4a4540;
   --correct:#4a7c59; --present:#c9a84c; --absent:#4a4540;
 }
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+input,button,select,textarea{touch-action:manipulation;font-size:16px;-webkit-user-select:auto;user-select:auto}
 html,body{height:100%;overscroll-behavior:none}
 body{
   font-family:'Libre Baskerville',Georgia,serif;
@@ -171,7 +172,7 @@ body{
 @keyframes bounceUp{0%{transform:translateY(0)}30%{transform:translateY(-18px)}60%{transform:translateY(-6px)}80%{transform:translateY(-3px)}100%{transform:translateY(0)}}
 .keyboard{width:100%;max-width:500px;padding:6px 6px calc(var(--nav-h) + 16px);margin:0 auto}
 .kb-row{display:flex;justify-content:center;gap:4px;margin-bottom:4px}
-.key{height:50px;min-width:28px;flex:1;max-width:40px;border-radius:5px;border:1px solid rgba(201,168,76,.15);background:rgba(255,255,255,.08);color:var(--cream);font-family:'Courier Prime',monospace;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;user-select:none;-webkit-user-select:none;-webkit-appearance:none}
+.key{height:50px;min-width:28px;flex:1;max-width:40px;border-radius:5px;border:1px solid rgba(201,168,76,.15);background:rgba(255,255,255,.08);color:var(--cream);font-family:'Courier Prime',monospace;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease;user-select:none;-webkit-user-select:none;-webkit-appearance:none;touch-action:manipulation}
 .key:active{transform:scale(.92);filter:brightness(1.3)}
 .key.wide{min-width:48px;max-width:56px;font-size:10px;letter-spacing:.5px}
 .key[data-state="correct"]{background:var(--correct);border-color:var(--correct);color:white}
@@ -1213,9 +1214,18 @@ function subscribeUserDoc(uid) {
 function subscribeMatches(uid) {
   if (unsubMatches) unsubMatches();
   let m1 = [], m2 = [];
-  const merge = () => renderMatchesList([...m1, ...m2]);
-  const u1 = db.collection('matches').where('player1','==',uid).onSnapshot(s => { m1 = s.docs.map(d=>({id:d.id,...d.data()})); merge(); });
-  const u2 = db.collection('matches').where('player2','==',uid).onSnapshot(s => { m2 = s.docs.map(d=>({id:d.id,...d.data()})); merge(); });
+  const merge = () => {
+    _cachedMatches = [...m1, ...m2];
+    // Always re-render — renderMatchesList is safe to call anytime
+    renderMatchesList(_cachedMatches);
+  };
+  const onErr = (e) => console.error('Match subscription error:', e.code, e.message);
+  const u1 = db.collection('matches')
+    .where('player1','==',uid)
+    .onSnapshot(s => { m1 = s.docs.map(d=>({id:d.id,...d.data()})); merge(); }, onErr);
+  const u2 = db.collection('matches')
+    .where('player2','==',uid)
+    .onSnapshot(s => { m2 = s.docs.map(d=>({id:d.id,...d.data()})); merge(); }, onErr);
   unsubMatches = () => { u1(); u2(); };
 }
 
@@ -1306,7 +1316,11 @@ function navTo(tab) {
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.getElementById('nav-' + tab).classList.add('active');
   if (tab === 'play') { showScreen('home-screen'); initHome(); }
-  else if (tab === 'matches') { showScreen('matches-screen'); }
+  else if (tab === 'matches') {
+    showScreen('matches-screen');
+    // Re-render from cache immediately, then the live listener will update
+    renderMatchesList(_cachedMatches);
+  }
   else if (tab === 'friends') { showScreen('friends-screen'); refreshFriendsScreen(); }
 }
 function goHome() { navTo('play'); }
@@ -1440,13 +1454,17 @@ async function refreshFriendsScreen() {
 
 // ─── MATCHES ──────────────────────────────────────────────
 let activeMatchId=null, activeMatchData=null, activeMatchOpponentName='Opponent', opponentUid=null;
+let _cachedMatches = []; // live cache updated by subscribeMatches
 
+const _oppNameCache = {}; // cache opponent display names
 async function renderMatchesList(matches) {
   const container = document.getElementById('matches-list');
+  if (!container) return;
+  console.log('renderMatchesList called with', matches.length, 'matches');
   matches.sort((a,b) => (a.status==='active'?0:1) - (b.status==='active'?0:1));
   const activeCount = matches.filter(m => m.status==='active').length;
   const badge = document.getElementById('matches-badge');
-  if (activeCount > 0) { badge.textContent = activeCount; badge.style.display = 'block'; } else badge.style.display = 'none';
+  if (badge) { if (activeCount > 0) { badge.textContent = activeCount; badge.style.display = 'block'; } else badge.style.display = 'none'; }
   if (!matches.length) { container.innerHTML = '<div class="empty-state"><span class="empty-state-icon">⚔️</span><div class="empty-state-text">No matches yet</div><div class="empty-state-sub">Tap "+ New Match" to challenge a friend</div></div>'; return; }
   container.innerHTML = '';
   for (const match of matches) {
@@ -1459,8 +1477,13 @@ async function renderMatchesList(matches) {
     const myH   = myS.filter(s=>s!=null).length;
     const oppH  = oppS.filter(s=>s!=null).length;
     const course = COURSES.find(c=>c.id===match.courseId) || {name: match.courseId};
-    let oppName = 'Opponent';
-    try { const snap = await db.collection('users').doc(oppU).get(); if (snap.exists) oppName = snap.data().displayName; } catch(e) {}
+    let oppName = _oppNameCache[oppU] || 'Opponent';
+    if (!_oppNameCache[oppU]) {
+      try {
+        const snap = await db.collection('users').doc(oppU).get();
+        if (snap.exists) { oppName = snap.data().displayName || oppU; _oppNameCache[oppU] = oppName; }
+      } catch(e) { console.warn('Could not fetch opponent name:', e.message); }
+    }
     // Build mini scorecard rows
     const makeScoreRow = (scores, label) => {
       let row = `<div style="display:flex;gap:3px;align-items:center;margin-top:6px">
@@ -1802,6 +1825,30 @@ document.addEventListener('keydown', e => {
   else if (e.key==='Backspace') handleMatchKey('⌫');
   else if (/^[a-zA-Z]$/.test(e.key)) handleMatchKey(e.key.toUpperCase());
 });
+
+
+// ── MOBILE: PREVENT ALL ZOOM ────────────────────────────────────────────
+(function preventZoom(){
+  // Block pinch-to-zoom
+  document.addEventListener('touchmove', function(e){
+    if (e.touches && e.touches.length > 1) e.preventDefault();
+  }, {passive: false});
+  // Block double-tap zoom (but allow it on text inputs)
+  var lastTap = 0;
+  document.addEventListener('touchend', function(e){
+    var now = Date.now();
+    if (now - lastTap < 300) {
+      if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+      }
+    }
+    lastTap = now;
+  }, {passive: false});
+  // Block Safari gesture zoom
+  document.addEventListener('gesturestart',  function(e){ e.preventDefault(); }, {passive: false});
+  document.addEventListener('gesturechange', function(e){ e.preventDefault(); }, {passive: false});
+  document.addEventListener('gestureend',    function(e){ e.preventDefault(); }, {passive: false});
+})();
 
 </script>
 </body>
