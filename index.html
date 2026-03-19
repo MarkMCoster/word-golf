@@ -59,9 +59,24 @@ service cloud.firestore {
         ||  request.auth.uid == resource.data.player1
         ||  request.auth.uid == resource.data.player2);
     }
+
+    // Community courses — anyone signed in can read/list; creator can write
+    match /courses/{cid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.auth.uid == request.resource.data.creatorUid;
+      allow update: if request.auth != null
+        && (request.auth.uid == resource.data.creatorUid
+        ||  request.resource.data.diff(resource.data).affectedKeys().hasOnly(['playCount']));
+      allow delete: if request.auth != null
+        && request.auth.uid == resource.data.creatorUid;
+    }
   }
 }
-║  STEP 5  Push index.html to GitHub → Settings → Pages → main     ║
+║  STEP 5  Firestore → Indexes → Add index:                         ║
+║          Collection: courses  Field: playCount DESC               ║
+║                                                                   ║
+║  STEP 6  Push index.html to GitHub → Settings → Pages → main     ║
 ║          Add your Pages URL to Firebase Auth Authorized Domains   ║
 ╚══════════════════════════════════════════════════════════════════╝
 -->
@@ -125,6 +140,16 @@ body{
 .resume-icon{font-size:26px;flex-shrink:0}
 .resume-text-main{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:var(--cream)}
 .resume-text-sub{font-size:11px;color:var(--green-light);margin-top:2px}
+.course-card-badge{position:absolute;top:10px;right:38px;font-family:'Courier Prime',monospace;font-size:9px;letter-spacing:1px;padding:2px 7px;border-radius:10px;text-transform:uppercase}
+.badge-yours{background:rgba(201,168,76,.2);color:var(--gold);border:1px solid rgba(201,168,76,.3)}
+.badge-community{background:rgba(82,183,136,.15);color:var(--green-light);border:1px solid rgba(82,183,136,.25)}
+.course-play-count{font-size:10px;color:var(--gray-mid);font-family:'Courier Prime',monospace;margin-top:2px}
+.course-search-row{display:flex;gap:10px;margin-bottom:12px}
+.course-search-input{flex:1;background:rgba(255,255,255,.05);border:1px solid rgba(201,168,76,.3);border-radius:6px;padding:10px 14px;color:var(--cream);font-family:'Libre Baskerville',serif;font-size:14px;outline:none;transition:border-color .2s;-webkit-appearance:none}
+.course-search-input:focus{border-color:var(--gold)}
+.course-search-input::placeholder{color:var(--gray-mid);font-style:italic;font-size:13px}
+.courses-loading{color:var(--gray-mid);font-size:12px;font-style:italic;padding:8px 0;text-align:center}
+.show-more-btn{width:100%;padding:9px;font-size:12px;letter-spacing:1px;margin-top:4px;opacity:.7}
 
 /* BUILDER */
 #builder-screen{justify-content:flex-start;padding:0}
@@ -393,8 +418,10 @@ body{
     <p class="game-subtitle">18 Holes · Par 72 · Lower is Better</p>
     <div class="divider"></div>
   </div>
+
+  <!-- RESUME: shown when a round is in progress -->
   <div id="resume-section" class="home-section" style="display:none">
-    <div class="section-label">In Progress</div>
+    <div class="section-label">Continue Your Round</div>
     <div class="resume-card" onclick="resumeRound()">
       <div class="resume-icon">🏌️</div>
       <div>
@@ -403,12 +430,34 @@ body{
       </div>
     </div>
   </div>
+
+  <!-- FEATURED COURSES: the 3 built-ins -->
   <div class="home-section">
-    <div class="section-label">Choose Your Course</div>
+    <div class="section-label">Featured Courses</div>
     <div id="course-list"></div>
+  </div>
+
+  <!-- YOUR COURSES: courses this user created -->
+  <div class="home-section" id="your-courses-section" style="display:none">
+    <div class="section-label">Your Courses</div>
+    <div id="your-courses-list"></div>
+  </div>
+
+  <!-- COMMUNITY COURSES: search + browse -->
+  <div class="home-section">
+    <div class="section-label">Community Courses</div>
+    <div class="course-search-row">
+      <input class="course-search-input" id="community-search-input" placeholder="Search by course name…" oninput="filterCommunityCourses()">
+    </div>
+    <div id="community-courses-list"><div class="courses-loading">Loading courses…</div></div>
+  </div>
+
+  <!-- CREATE / PRACTICE -->
+  <div class="home-section">
+    <div class="section-label">Build &amp; Practice</div>
     <div class="course-card" onclick="openBuilder()" style="border-color:rgba(201,168,76,.4);background:linear-gradient(135deg,rgba(201,168,76,.07),rgba(124,92,58,.07))">
-      <div class="course-name" style="color:var(--gold-light)">✏️ Create Custom Course</div>
-      <div class="course-meta">Design your own 18 holes &amp; share the code with friends</div>
+      <div class="course-name" style="color:var(--gold-light)">✏️ Create a Course</div>
+      <div class="course-meta">Design your own 18 holes — it'll appear in the community list</div>
       <span class="course-arrow">→</span>
     </div>
     <div class="course-card" onclick="startPracticeRound()" style="border-style:dashed">
@@ -417,8 +466,10 @@ body{
       <span class="course-arrow">→</span>
     </div>
   </div>
+
+  <!-- CODE ENTRY: still available as fallback -->
   <div class="home-section">
-    <div class="section-label">Play a Friend's Course</div>
+    <div class="section-label">Have a Course Code?</div>
     <div class="code-input-row">
       <input class="code-input" id="course-code-input" placeholder="PASTE COURSE CODE" maxlength="300" oninput="this.value=this.value.toUpperCase().trim()">
       <button class="btn" onclick="loadCourseCode()">Play</button>
@@ -1038,7 +1089,7 @@ function fillRemainingRandom(){
     if(pi<avail.length){inp.value=avail[pi++];validateBW(i);}
   }
 }
-function launchCustomCourse(){
+async function launchCustomCourse(){
   const words=[];
   for(let i=0;i<18;i++){
     const v=(document.getElementById(`bw${i}`)?.value||'').trim().toUpperCase();
@@ -1049,10 +1100,39 @@ function launchCustomCourse(){
   const customCode=encodeCourse(name,words);
   const saved=loadG();
   if(saved&&!saved.completed){if(!confirm('Abandon current round and start this one?'))return;}
-  const course={id:'CUST',name,description:'Custom Course',words,flavors:words.map((_,i)=>`Hole ${i+1} — Your course, your words.`),isCustom:true,customCode};
+
+  // Save to Firestore so it appears in the community list
+  let firestoreId = null;
+  if(currentUser){
+    try{
+      const doc = await db.collection('courses').add({
+        name,
+        creatorUid: currentUser.uid,
+        creatorName: currentUserDoc?.displayName || currentUser.email.split('@')[0],
+        code: customCode,
+        words,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        playCount: 0
+      });
+      firestoreId = doc.id;
+    }catch(e){
+      console.warn('Could not save course to community:', e.message);
+      // Non-fatal — game still launches
+    }
+  }
+
+  const course={
+    id: firestoreId||'CUST',
+    name,
+    description: `By ${currentUserDoc?.displayName||'You'}`,
+    words,
+    flavors:words.map((_,i)=>`Hole ${i+1} — Your course, your words.`),
+    isCustom:true,
+    customCode
+  };
   G=mkState(course,false);G.isCustom=true;G.customCode=customCode;
   saveG();showScreen('game-screen');startHole();
-  toast('Course launched! Share the code after your round 🎨');
+  toast(firestoreId ? 'Course published to community! ⛳' : 'Course launched! Share the code after your round 🎨');
 }
 
 // ═══════════════════════════
@@ -1060,7 +1140,11 @@ function launchCustomCourse(){
 // ═══════════════════════════
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
 function goHome(){showScreen('home-screen');initHome();}
+// Community courses cache
+let _communityCourses = [];
+
 function initHome(){
+  // Resume banner
   const saved=loadG();
   const rs=document.getElementById('resume-section');
   if(saved&&!saved.completed){
@@ -1068,8 +1152,109 @@ function initHome(){
     document.getElementById('resume-text-main').textContent=`${saved.courseName} — Hole ${saved.currentHole+1}`;
     document.getElementById('resume-text-sub').textContent=`Score: ${fmtVP(totalVP(saved.scores))} after ${saved.scores.length} holes`;
   }else rs.style.display='none';
+
+  // Featured (built-in) courses
   const cl=document.getElementById('course-list');cl.innerHTML='';
-  COURSES.forEach(c=>{const d=document.createElement('div');d.className='course-card';d.innerHTML=`<div class="course-name">${c.name}</div><div class="course-meta">${c.description}</div><span class="course-arrow">→</span>`;d.onclick=()=>startCourse(c,false);cl.appendChild(d);});
+  COURSES.forEach(c=>{
+    const d=document.createElement('div');d.className='course-card';
+    d.innerHTML=`<div class="course-name">${c.name}</div><div class="course-meta">${c.description}</div><span class="course-arrow">→</span>`;
+    d.onclick=()=>startCourse(c,false);cl.appendChild(d);
+  });
+
+  // Load community + your courses from Firestore
+  loadCommunityCourses();
+}
+
+async function loadCommunityCourses(){
+  const communityEl = document.getElementById('community-courses-list');
+  const yourSection = document.getElementById('your-courses-section');
+  const yourEl = document.getElementById('your-courses-list');
+  try {
+    const snap = await db.collection('courses').limit(100).get();
+    _communityCourses = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.playCount||0)-(a.playCount||0));
+    renderYourCourses(_communityCourses, yourSection, yourEl);
+    renderCommunityCourses(_communityCourses, communityEl);
+  } catch(e) {
+    console.error('loadCommunityCourses:', e);
+    communityEl.innerHTML = '<div class="courses-loading">Could not load courses.</div>';
+  }
+}
+
+function renderYourCourses(all, section, el){
+  if(!currentUser){section.style.display='none';return;}
+  const mine = all.filter(c=>c.creatorUid===currentUser.uid);
+  if(mine.length===0){section.style.display='none';return;}
+  section.style.display='block';
+  el.innerHTML='';
+  mine.forEach(c=>{
+    el.appendChild(makeCommunityCard(c, true));
+  });
+}
+
+function renderCommunityCourses(all, el, query=''){
+  const q = query.toLowerCase().trim();
+  // Exclude own courses from community list — they show in "Your Courses"
+  let pool = currentUser ? all.filter(c=>c.creatorUid!==currentUser.uid) : all;
+  if(q) pool = pool.filter(c=>(c.name||'').toLowerCase().includes(q));
+  if(pool.length===0){
+    el.innerHTML=`<div class="courses-loading">${q?'No courses match your search.':'No community courses yet — create one!'}</div>`;
+    return;
+  }
+  el.innerHTML='';
+  pool.slice(0,10).forEach(c=>{
+    el.appendChild(makeCommunityCard(c, false));
+  });
+  if(pool.length>10){
+    const btn=document.createElement('button');
+    btn.className='btn btn-secondary show-more-btn';
+    btn.textContent=`Show ${pool.length-10} more courses`;
+    btn.onclick=()=>{
+      el.innerHTML='';
+      pool.forEach(c=>el.appendChild(makeCommunityCard(c,false)));
+    };
+    el.appendChild(btn);
+  }
+}
+
+function makeCommunityCard(c, isYours){
+  const d=document.createElement('div');d.className='course-card';
+  const plays = c.playCount||0;
+  const playLabel = plays===1?'1 play':`${plays} plays`;
+  const badgeHtml = isYours
+    ? `<span class="course-card-badge badge-yours">Yours</span>`
+    : `<span class="course-card-badge badge-community">Community</span>`;
+  d.innerHTML=`
+    ${badgeHtml}
+    <div class="course-name">${escHtml(c.name||'Untitled')}</div>
+    <div class="course-meta">By ${escHtml(c.creatorName||'Unknown')}</div>
+    <div class="course-play-count">⛳ ${playLabel}</div>
+    <span class="course-arrow">→</span>`;
+  d.onclick=()=>startCommunityCoursFromDoc(c);
+  return d;
+}
+
+function escHtml(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function filterCommunityCourses(){
+  const q=document.getElementById('community-search-input').value;
+  renderCommunityCourses(_communityCourses, document.getElementById('community-courses-list'), q);
+}
+
+async function startCommunityCoursFromDoc(c){
+  const saved=loadG();
+  if(saved&&!saved.completed){if(!confirm(`Start "${c.name}"? Your current round will be abandoned.`))return;}
+  const dec=decodeCourse(c.code);
+  if(!dec){toast('Course code is invalid');return;}
+  const course={id:c.id,name:c.name,description:`By ${c.creatorName||'Unknown'}`,
+    words:dec.type==='custom'?dec.words:dec.course.words,
+    flavors:(dec.type==='custom'?dec.words:dec.course.words).map((_,i)=>`Hole ${i+1} — ${c.name}`),
+    isCustom:true,customCode:c.code};
+  G=mkState(course,false);G.isCustom=true;G.customCode=c.code;
+  saveG();showScreen('game-screen');startHole();
+  // Increment play count (best-effort)
+  try{await db.collection('courses').doc(c.id).update({playCount:(c.playCount||0)+1});}catch(e){}
 }
 function resumeRound(){const s=loadG();if(!s)return;G=s;showScreen('game-screen');startHole();}
 function startCourse(course,isPractice){
@@ -1084,7 +1269,7 @@ function startPracticeRound(){
   const c={id:'PRAC',name:'Practice Round',description:'Random 18',words,flavors:words.map((_,i)=>`Hole ${i+1} — A fresh challenge awaits.`)};
   G=mkState(c,true);saveG();showScreen('game-screen');startHole();
 }
-function loadCourseCode(){
+async function loadCourseCode(){
   const raw=document.getElementById('course-code-input').value.trim().toUpperCase();
   if(!raw){toast('Enter a course code');return;}
   const dec=decodeCourse(raw);
@@ -1099,6 +1284,13 @@ function loadCourseCode(){
   saveG();document.getElementById('course-code-input').value='';
   showScreen('game-screen');startHole();
   toast(`Playing: ${course.name}`);
+  // Increment play count if this matches a community course
+  if(course.isCustom && currentUser){
+    try{
+      const snap=await db.collection('courses').where('code','==',raw).limit(1).get();
+      if(!snap.empty) snap.docs[0].ref.update({playCount: firebase.firestore.FieldValue.increment(1)});
+    }catch(e){}
+  }
 }
 
 // ═══════════════════════════
