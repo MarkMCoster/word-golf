@@ -745,6 +745,18 @@ function scoreInfo(s){
 }
 function totalVP(scores){return scores.reduce((a,s)=>a+scoreInfo(s).vspar,0)}
 function fmtVP(vp){return vp===0?'E':vp>0?`+${vp}`:`${vp}`}
+// Safely convert a Firestore scores value to a plain 18-element array.
+// Firestore stores arrays as {0: val, 1: val, ...} maps when updated via
+// dot-notation (scores.uid.0 = 4), so we must normalize before using .filter/.map etc.
+function toScoreArray(val) {
+  if (!val) return Array(18).fill(null);
+  if (Array.isArray(val)) return val;
+  // Firestore map with numeric string keys
+  const arr = Array(18).fill(null);
+  Object.keys(val).forEach(k => { const i = parseInt(k); if (i >= 0 && i < 18) arr[i] = val[k]; });
+  return arr;
+}
+
 
 // ═══════════════════════════
 //  HOLE STATE
@@ -1470,8 +1482,8 @@ async function renderMatchesList(matches) {
   for (const match of matches) {
     const isP1 = match.player1 === currentUser.uid;
     const oppU = isP1 ? match.player2 : match.player1;
-    const myS  = (match.scores && match.scores[currentUser.uid]) || [];
-    const oppS = (match.scores && match.scores[oppU]) || [];
+    const myS  = toScoreArray(match.scores && match.scores[currentUser.uid]);
+    const oppS = toScoreArray(match.scores && match.scores[oppU]);
     const myVP  = myS.filter(s=>s!=null).reduce((a,s)=>a+scoreInfo(s).vspar, 0);
     const oppVP = oppS.filter(s=>s!=null).reduce((a,s)=>a+scoreInfo(s).vspar, 0);
     const myH   = myS.filter(s=>s!=null).length;
@@ -1552,9 +1564,13 @@ async function createMatch() {
   const friendUid = document.getElementById('match-friend-select').value;
   const courseId  = document.getElementById('match-course-select').value;
   if (!friendUid) { toast('Select a friend first'); return; }
+  // Store scores as a map {0:null,...,17:null} — Firestore converts
+  // arrays to maps anyway when you update individual indices via dot-notation,
+  // so we start consistent and toScoreArray() handles both formats.
+  const makeEmptyScores = () => Object.fromEntries([...Array(18).keys()].map(i=>[i,null]));
   const initScores = {};
-  initScores[currentUser.uid] = Array(18).fill(null);
-  initScores[friendUid]       = Array(18).fill(null);
+  initScores[currentUser.uid] = makeEmptyScores();
+  initScores[friendUid]       = makeEmptyScores();
   try {
     await db.collection('matches').add({ courseId, player1: currentUser.uid, player2: friendUid, scores: initScores, status: 'active', winner: null, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
     closeNewMatchModal(); toast('Match created! ⛳'); navTo('matches');
@@ -1565,7 +1581,7 @@ async function openMatchGame(matchId, matchData, oppU, oppName) {
   activeMatchId = matchId; activeMatchData = matchData;
   activeMatchOpponentName = oppName; opponentUid = oppU;
   const course = COURSES.find(c=>c.id===matchData.courseId) || COURSES[0];
-  const myScores = (matchData.scores && matchData.scores[currentUser.uid]) || Array(18).fill(null);
+  const myScores = toScoreArray(matchData.scores && matchData.scores[currentUser.uid]);
   // Find the first unplayed hole
   let nextHole = myScores.findIndex(s => s === null);
   if (nextHole === -1) nextHole = 17; // all done, show last hole
@@ -1589,7 +1605,7 @@ async function openMatchGame(matchId, matchData, oppU, oppName) {
 
 function updateMatchOppBar() {
   if (!activeMatchData || !opponentUid) return;
-  const oppS = (activeMatchData.scores && activeMatchData.scores[opponentUid]) || [];
+  const oppS = toScoreArray(activeMatchData.scores && activeMatchData.scores[opponentUid]);
   const oppVP = oppS.filter(s=>s!=null).reduce((a,s)=>a+scoreInfo(s).vspar, 0);
   const oppH  = oppS.filter(s=>s!=null).length;
   document.getElementById('match-opp-avatar').textContent = (activeMatchOpponentName||'?')[0].toUpperCase();
@@ -1610,8 +1626,8 @@ async function saveMatchHoleScore(holeIdx, score) {
     activeMatchData = snap.data();
     // Update opponent bar with latest opponent score
     updateMatchOppBar();
-    const myS  = activeMatchData.scores[currentUser.uid] || [];
-    const oppS = activeMatchData.scores[opponentUid] || [];
+    const myS  = toScoreArray(activeMatchData.scores[currentUser.uid]);
+    const oppS = toScoreArray(activeMatchData.scores[opponentUid]);
     // Check if both players have finished all 18 holes
     if (myS.every(s=>s!==null) && oppS.every(s=>s!==null)) {
       const myVP  = myS.reduce((a,s)=>a+scoreInfo(s).vspar, 0);
@@ -1767,7 +1783,7 @@ function toggleMatchScorecard() {
 }
 function renderMatchSC() {
   const el = document.getElementById('match-scorecard-content'); if (!el) return;
-  const oppS = (activeMatchData?.scores?.[opponentUid]) || [];
+  const oppS = toScoreArray(activeMatchData?.scores?.[opponentUid]);
   const myS  = MG.scores.map(s => s===undefined ? null : s);
   const makeT = (start, end) => {
     let h = `<table class="scorecard-table"><thead><tr><th>HOLE</th>`;
